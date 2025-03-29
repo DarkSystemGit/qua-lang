@@ -48,7 +48,7 @@ fn main() {
                 Ok(f) => f,
                 Err(err) => return eprintln!("Error creating file {out_file_path:#?}: {err:#?}"),
             };
-            match out_file.write_all(&wasm.into_bytes()) {
+            match out_file.write_all(&wasm) {
                 Ok(()) => eprintln!("Wrote to {out_file_path:#?}"),
                 Err(err) => eprintln!("Error writing to file: {err}"),
             }
