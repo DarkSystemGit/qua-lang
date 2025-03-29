@@ -7,7 +7,7 @@ use tce::MarkTailCalls;
 use crate::{
     ast::{
         BinaryExpr, BinaryOp, Binding, BindingMetadata, Block, Call, ElseBlock, Expr, Identifier,
-        IfExpr, Pattern, Program, Stmt, UnaryExpr, UnaryOp,
+        IfExpr, Program, Stmt, UnaryExpr, UnaryOp,
     },
     lexer::{Pos, Token, TokenData},
     stream::Stream,
@@ -72,21 +72,21 @@ impl Parser {
     }
 
     fn parse_binding(&mut self, env: &mut Env) -> Parse<Binding> {
-        let pattern = self.parse_pattern(env)?;
+        let ident = self.parse_identifier(env)?;
 
         let is_func = self.matches(&TokenData::OpenParen);
 
         if is_func {
-            self.parse_func_binding(env, pattern)
+            self.parse_func_binding(env, ident)
         } else {
             self.expect(TokenData::Equals)?;
 
             // Insert the var *after* parsing value so that shadowing works
-            let name = pattern.0.name.clone();
+            let name = ident.name.clone();
             let value = self.parse_expr(env).inspect(|_| env.declare_local(name))?;
 
             Ok(Binding {
-                pattern,
+                ident,
                 metadata: BindingMetadata::Var,
                 value,
             })
@@ -99,7 +99,7 @@ impl Parser {
         // TODO: better name, maybe based on pos?
         let mut func_indent = Identifier::new("self".to_string());
 
-        let func = self.parse_func_binding(&mut env, Pattern(func_indent.clone()))?;
+        let func = self.parse_func_binding(&mut env, func_indent.clone())?;
         let func = Stmt::Let(func);
 
         func_indent.location = Some(env.resolve(&func_indent.name).unwrap());
@@ -111,16 +111,16 @@ impl Parser {
         }))
     }
 
-    fn parse_func_binding(&mut self, env: &mut Env, pattern: Pattern) -> Parse<Binding> {
-        let name = pattern.0.name.clone();
+    fn parse_func_binding(&mut self, env: &mut Env, ident: Identifier) -> Parse<Binding> {
+        let name = ident.name.clone();
         env.declare_local(name.clone());
         let mut env = env.new_frame(name.clone());
 
         let arguments = self.parse_arguments(
-            |parser, env| -> Parse<Pattern> {
-                let pattern = parser.parse_pattern(env)?;
-                env.declare_local(pattern.0.name.clone());
-                Ok(pattern)
+            |parser, env| -> Parse<Identifier> {
+                let ident = parser.parse_identifier(env)?;
+                env.declare_local(ident.name.clone());
+                Ok(ident)
             },
             &mut env,
         )?;
@@ -131,18 +131,13 @@ impl Parser {
         let upvalues = env.upvalues();
 
         Ok(Binding {
-            pattern,
+            ident,
             metadata: BindingMetadata::Func {
                 arguments,
                 upvalues,
             },
             value,
         })
-    }
-
-    fn parse_pattern(&mut self, env: &mut Env) -> Parse<Pattern> {
-        let identifier = self.parse_identifier(env)?;
-        Ok(Pattern(identifier))
     }
 
     fn parse_expr(&mut self, env: &mut Env) -> Parse<Expr> {

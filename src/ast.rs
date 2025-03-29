@@ -10,18 +10,16 @@ pub enum Stmt {
 
 #[derive(Clone, Debug)]
 pub struct Binding {
-    pub pattern: Pattern,
+    pub ident: Identifier,
     pub metadata: BindingMetadata,
     pub value: Expr,
 }
-#[derive(Clone, Debug)]
-pub struct Pattern(pub Identifier);
 
 #[derive(Clone, Debug)]
 pub enum BindingMetadata {
     Var,
     Func {
-        arguments: Vec<Pattern>,
+        arguments: Vec<Identifier>,
         upvalues: Vec<Upvalue>,
     },
 }

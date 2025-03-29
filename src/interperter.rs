@@ -7,7 +7,7 @@ pub use stdlib::stub_stdlib;
 use crate::{
     ast::{
         BinaryExpr, BinaryOp, Binding, BindingMetadata, Block, Call, ElseBlock, Expr, Identifier,
-        IfExpr, Literal, Pattern, Program, Stmt, UnaryExpr, UnaryOp,
+        IfExpr, Literal, Program, Stmt, UnaryExpr, UnaryOp,
     },
     lexer::Pos,
 };
@@ -55,7 +55,7 @@ impl Evaluate for Binding {
                     .collect();
                 let body = self.value.clone();
                 Value::Func(Func::User(UserFunc {
-                    name: self.pattern.0.name.clone(),
+                    name: self.ident.name.clone(),
                     arguments,
                     upvalues,
                     body,
@@ -331,7 +331,7 @@ pub enum Func {
 #[derive(Clone, Debug)]
 pub struct UserFunc {
     name: String,
-    arguments: Vec<Pattern>,
+    arguments: Vec<Identifier>,
     upvalues: Vec<Value>,
     body: Expr,
 }
