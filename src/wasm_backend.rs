@@ -34,31 +34,39 @@ impl WasmGenState {
 
     fn gen_program(&mut self, program: Vec<ast::Stmt>) {
         for stmt in program {
-            match stmt {
-                ast::Stmt::Let(binding) => match binding.metadata {
-                    ast::BindingMetadata::Var => todo!(),
-                    ast::BindingMetadata::Func {
-                        arguments,
-                        upvalues,
-                    } => {
-                        // Everything is boxed (ie an I32)
-                        let param_tys = arguments.iter().map(|_| wasm::ValType::I32).collect();
-                        let result_ty = wasm::ValType::I32;
-                        let ty = wasm::FuncType {
-                            params: param_tys,
-                            // Functions can only have 1 return type as of now
-                            results: vec![result_ty],
-                        };
+            self.gen_stmt(stmt);
+        }
+    }
 
-                        let ty = self.module.ty_sec.insert(ty);
-                        let func = wasm::Func::new(ty);
+    fn gen_stmt(&mut self, stmt: ast::Stmt) {
+        match stmt {
+            ast::Stmt::Let(binding) => self.gen_binding(binding),
+            ast::Stmt::Expr(expr) => todo!(),
+        }
+    }
 
-                        // TODO: actual generate body
+    fn gen_binding(&mut self, binding: ast::Binding) {
+        match binding.metadata {
+            ast::BindingMetadata::Var => todo!(),
+            ast::BindingMetadata::Func {
+                arguments,
+                upvalues,
+            } => {
+                // Everything is boxed (ie an I32)
+                let param_tys = arguments.iter().map(|_| wasm::ValType::I32).collect();
+                let result_ty = wasm::ValType::I32;
+                let ty = wasm::FuncType {
+                    params: param_tys,
+                    // Functions can only have 1 return type as of now
+                    results: vec![result_ty],
+                };
 
-                        self.module.funcs.insert(func);
-                    }
-                },
-                ast::Stmt::Expr(expr) => todo!(),
+                let ty = self.module.ty_sec.insert(ty);
+                let func = wasm::Func::new(ty);
+
+                // TODO: actual generate body
+
+                self.module.funcs.insert(func);
             }
         }
     }
