@@ -668,7 +668,10 @@ mod wasm {
                 }
             }
 
-            pub fn extend<V: IntoBytes, I: IntoIterator<Item = V>>(&mut self, items: I) {
+            pub fn extend<I: IntoIterator<Item = T>>(&mut self, items: I)
+            where
+                T: IntoBytes,
+            {
                 self.vec.extend(items.into_iter().flat_map(|i| {
                     self.size += 1;
                     i.into_bytes()
