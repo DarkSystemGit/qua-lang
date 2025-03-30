@@ -230,6 +230,13 @@ mod wasm {
     }
 
     pub struct LocalIdx(usize);
+    impl std::ops::Deref for LocalIdx {
+        type Target = usize;
+
+        fn deref(&self) -> &Self::Target {
+            &self.0
+        }
+    }
 
     pub type Instr = u8;
 
