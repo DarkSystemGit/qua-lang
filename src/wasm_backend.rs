@@ -1,11 +1,14 @@
-use wasm::binary::{IntoBytes, WasmVec};
+use wasm::{
+    binary::{IntoBytes, WasmVec},
+    StartSection,
+};
 
 use crate::ast;
 
 pub fn gen_wasm(program: ast::Program) -> Vec<u8> {
     let mut state = WasmGenState::new();
     state.gen_program(program);
-    state.module.into_bytes()
+    state.finish()
 }
 
 struct WasmGenState {
@@ -36,6 +39,15 @@ impl WasmGenState {
             cur_func: main_func,
             mem_store: MemStore::new(),
         }
+    }
+
+    fn finish(mut self) -> Vec<u8> {
+        // Set up main function
+        let idx = self.module.funcs.insert(self.cur_func);
+        let start_sec = wasm::StartSection { func: idx };
+        self.module.start_sec = Some(start_sec);
+
+        self.module.into_bytes()
     }
 
     fn gen_program(&mut self, program: ast::Program) {
@@ -84,7 +96,42 @@ impl WasmGenState {
     }
 
     fn gen_expr(&mut self, expr: ast::Expr) {
-        todo!()
+        match expr {
+            ast::Expr::Block(block) => {
+                for stmt in block.stmts {
+                    self.gen_stmt(stmt);
+                }
+
+                if let Some(return_expr) = block.return_expr {
+                    self.gen_expr(*return_expr);
+                }
+            }
+            ast::Expr::Call(call) => {
+                // Put arguments onto the stack
+                for arg in call.arguments {
+                    self.gen_expr(arg);
+                }
+
+                // TODO: funcs
+                self.cur_func.body.extend(wasm::binary::CALL);
+                self.cur_func.body.extend(0u32);
+            }
+            ast::Expr::If(if_expr) => todo!(),
+            ast::Expr::Binary(binary_expr) => todo!(),
+            ast::Expr::Unary(unary_expr) => todo!(),
+            ast::Expr::Literal(literal) => match literal {
+                ast::Literal::Bool(_) => todo!(),
+                ast::Literal::Number(n) => {
+                    self.gen_box(MemBox::F64, |state| {
+                        state.cur_func.body.extend(wasm::binary::CONST_F64);
+                        state.cur_func.body.extend(n);
+                    });
+                }
+                ast::Literal::Str(_) => todo!(),
+                ast::Literal::Nil => todo!(),
+            },
+            ast::Expr::Identifier(identifier) => todo!(),
+        }
     }
 
     /// Boxes the top item on the stack and returns a pointer to it.
