@@ -442,7 +442,7 @@ mod wasm {
 
     impl IntoBytes for MemType {
         fn into_bytes(self) -> Vec<u8> {
-            todo!()
+            self.limits.into_bytes()
         }
     }
 
