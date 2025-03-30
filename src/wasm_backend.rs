@@ -1,27 +1,38 @@
 use crate::ast::{self, Program};
 
 pub fn gen_wasm(program: Program) -> Vec<u8> {
-    let mut module = wasm::Module::default();
-
-    // The idx is always 0, at least until wasm supports multiple memories
-    let _ = module.mem_sec.insert(wasm::MemType { min: 0, max: None });
-
-    module.gen_program(program);
-
-    module.into_bytes()
+    let mut state = WasmGenState::new();
+    state.gen_program(program);
+    state.module.into_bytes()
 }
 
-impl wasm::Module {
-    fn gen_program(&mut self, program: Program) {
-        let mut main_fn = {
+struct WasmGenState {
+    module: wasm::Module,
+    cur_func: wasm::Func,
+}
+impl WasmGenState {
+    fn new() -> Self {
+        let mut module = wasm::Module::default();
+
+        // The idx is always 0, at least until wasm supports multiple memories
+        let _ = module.mem_sec.insert(wasm::MemType { min: 0, max: None });
+
+        let main_func = {
             let ty = wasm::FuncType {
                 params: vec![],
                 results: vec![],
             };
-            let ty = self.ty_sec.insert(ty);
+            let ty = module.ty_sec.insert(ty);
             wasm::Func::new(ty)
         };
 
+        WasmGenState {
+            module,
+            cur_func: main_func,
+        }
+    }
+
+    fn gen_program(&mut self, program: Vec<ast::Stmt>) {
         for stmt in program {
             match stmt {
                 ast::Stmt::Let(binding) => match binding.metadata {
@@ -39,12 +50,12 @@ impl wasm::Module {
                             results: vec![result_ty],
                         };
 
-                        let ty = self.ty_sec.insert(ty);
+                        let ty = self.module.ty_sec.insert(ty);
                         let func = wasm::Func::new(ty);
 
                         // TODO: actual generate body
 
-                        self.funcs.insert(func);
+                        self.module.funcs.insert(func);
                     }
                 },
                 ast::Stmt::Expr(expr) => todo!(),
