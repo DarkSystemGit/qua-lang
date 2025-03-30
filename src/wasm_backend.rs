@@ -237,13 +237,13 @@ mod wasm {
     /// (function) imports section.
     #[derive(Default)]
     pub struct Functions {
-        imports: Vec<FuncImport>,
+        imports: WasmVec<FuncImport>,
         funcs: Vec<Func>,
     }
 
     impl Functions {
         fn next_idx(&self) -> FuncIdx {
-            FuncIdx(self.imports.len() + self.funcs.len())
+            FuncIdx(self.imports.size() + self.funcs.len() as u32)
         }
 
         pub fn insert(&mut self, func: Func) -> FuncIdx {
@@ -254,7 +254,13 @@ mod wasm {
     }
 
     #[derive(Clone, Copy, Debug)]
-    pub struct FuncIdx(usize);
+    pub struct FuncIdx(u32);
+
+    impl IntoBytes for FuncIdx {
+        fn into_bytes(self) -> Vec<u8> {
+            self.0.into_bytes()
+        }
+    }
 
     pub struct FuncImport {
         pub module: String,
