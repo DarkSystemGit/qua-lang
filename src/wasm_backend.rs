@@ -151,9 +151,16 @@ mod wasm {
         pub mem_sec: MemorySection,
     }
 
-    impl Module {
-        pub fn into_bytes(self) -> Vec<u8> {
-            todo!()
+    impl IntoBytes for Module {
+        fn into_bytes(self) -> Vec<u8> {
+            let mut buf = Vec::new();
+
+            buf.extend(binary::MAGIC_NUM);
+            buf.extend(binary::VERSION);
+
+            buf.extend(self.ty_sec.into_bytes());
+
+            buf
         }
     }
 
@@ -176,6 +183,14 @@ mod wasm {
 
                 idx
             }
+        }
+    }
+
+    impl IntoBytes for TypeSection {
+        fn into_bytes(self) -> Vec<u8> {
+            let mut buf = self.types.into_bytes();
+            buf.splice(..0, [binary::SEC_TY]);
+            buf
         }
     }
 
@@ -333,6 +348,21 @@ mod wasm {
 
         pub const MAGIC_NUM: [u8; 4] = *b"\0asm";
         pub const VERSION: [u8; 4] = [0x01, 0x00, 0x00, 0x00];
+
+        // Section types
+        pub const SEC_CUSTOM: u8 = 0x00;
+        pub const SEC_TY: u8 = 0x01;
+        pub const SEC_IMPORT: u8 = 0x02;
+        pub const SEC_FUNC: u8 = 0x03;
+        pub const SEC_TABLE: u8 = 0x04;
+        pub const SEC_MEM: u8 = 0x05;
+        pub const SEC_GLOBAL: u8 = 0x06;
+        pub const SEC_EXPORT: u8 = 0x07;
+        pub const SEC_START: u8 = 0x08;
+        pub const SEC_ELEM: u8 = 0x09;
+        pub const SEC_CODE: u8 = 0x0A;
+        pub const SEC_DATA: u8 = 0x0B;
+        pub const SEC_DATA_COUNT: u8 = 0x0C;
 
         // Number types
         pub const TY_I32: u8 = 0x7F;
