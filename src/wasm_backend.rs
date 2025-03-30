@@ -231,7 +231,7 @@ mod wasm {
 
     pub struct LocalIdx(usize);
 
-    pub struct Instr(u8);
+    pub type Instr = u8;
 
     #[derive(Default)]
     pub struct MemorySection {
