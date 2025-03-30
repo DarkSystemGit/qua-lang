@@ -1,3 +1,5 @@
+use wasm::binary::IntoBytes;
+
 use crate::ast;
 
 pub fn gen_wasm(program: ast::Program) -> Vec<u8> {
@@ -16,7 +18,9 @@ impl WasmGenState {
         let mut module = wasm::Module::default();
 
         // The idx is always 0, at least until wasm supports multiple memories
-        let _ = module.mem_sec.insert(wasm::MemType { min: 0, max: None });
+        let _ = module.mem_sec.insert(wasm::MemType {
+            limits: wasm::Limits { min: 0, max: None },
+        });
 
         let main_func = {
             let ty = wasm::FuncType {
@@ -55,7 +59,7 @@ impl WasmGenState {
 
                 let idx = self.cur_func.insert_local(wasm::ValType::I32);
                 self.cur_func.body.extend([wasm::binary::LOCAL_SET]);
-                leb128::write::unsigned(&mut self.cur_func.body, *idx as u64).unwrap();
+                self.cur_func.body.extend([idx]);
             }
             ast::BindingMetadata::Func {
                 arguments,
@@ -91,7 +95,7 @@ impl WasmGenState {
         let idx = self.mem_store.alloc(4);
 
         // Write the memory location
-        leb128::write::unsigned(&mut self.cur_func.body, idx.0.into()).unwrap();
+        self.cur_func.body.extend([idx]);
 
         // Store that value in memory
         self.cur_func.body.extend([
@@ -103,7 +107,7 @@ impl WasmGenState {
         ]);
 
         // Return a pointer to the memory location
-        leb128::write::unsigned(&mut self.cur_func.body, idx.0.into()).unwrap();
+        self.cur_func.body.extend([idx]);
     }
 }
 
@@ -125,10 +129,18 @@ impl MemStore {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
 pub struct MemIdx(u32);
+impl IntoBytes for MemIdx {
+    fn into_bytes(self) -> Vec<u8> {
+        self.0.into_bytes()
+    }
+}
 
 mod wasm {
     use std::collections::HashMap;
+
+    use binary::{IntoBytes, WasmVec};
 
     #[derive(Default)]
     pub struct Module {
@@ -184,6 +196,17 @@ mod wasm {
         F64,
     }
 
+    impl IntoBytes for ValType {
+        fn into_bytes(self) -> Vec<u8> {
+            match self {
+                ValType::I32 => vec![0x7F],
+                ValType::I64 => vec![0x7E],
+                ValType::F32 => vec![0x7D],
+                ValType::F64 => vec![0x7C],
+            }
+        }
+    }
+
     /// *Not* the functions section. It is a merge of the function, code, and
     /// (function) imports section.
     #[derive(Default)]
@@ -215,33 +238,31 @@ mod wasm {
 
     pub struct Func {
         pub ty: TypeIdx,
-        locals: Vec<ValType>,
+        locals: WasmVec<ValType>,
         /// The raw bytes of the instructions. Shoud not include the END opcode.
-        pub body: Vec<Instr>,
+        pub body: WasmVec<Instr>,
     }
 
     impl Func {
         pub fn new(ty: TypeIdx) -> Self {
             Func {
                 ty,
-                locals: Vec::new(),
-                body: Vec::new(),
+                locals: WasmVec::new(),
+                body: WasmVec::new(),
             }
         }
 
         pub fn insert_local(&mut self, ty: ValType) -> LocalIdx {
-            let idx = LocalIdx(self.locals.len());
-            self.locals.push(ty);
+            let idx = LocalIdx(self.locals.size());
+            self.locals.extend([ty]);
             idx
         }
     }
 
-    pub struct LocalIdx(usize);
-    impl std::ops::Deref for LocalIdx {
-        type Target = usize;
-
-        fn deref(&self) -> &Self::Target {
-            &self.0
+    pub struct LocalIdx(u32);
+    impl IntoBytes for LocalIdx {
+        fn into_bytes(self) -> Vec<u8> {
+            self.0.into_bytes()
         }
     }
 
@@ -249,27 +270,56 @@ mod wasm {
 
     #[derive(Default)]
     pub struct MemorySection {
-        memories: Vec<MemType>,
+        memories: WasmVec<MemType>,
     }
 
     impl MemorySection {
         pub fn insert(&mut self, mem: MemType) -> MemIdx {
-            let idx = MemIdx(self.memories.len());
-            self.memories.push(mem);
+            let idx = MemIdx(self.memories.size());
+            self.memories.extend([mem]);
             idx
         }
     }
 
-    pub struct MemIdx(usize);
+    pub struct MemIdx(u32);
 
     pub struct MemType {
-        // The minimum size, as a multiple of the page size.
+        // The min and max size, in multiples of the page size.
+        pub limits: Limits,
+    }
+
+    impl IntoBytes for MemType {
+        fn into_bytes(self) -> Vec<u8> {
+            todo!()
+        }
+    }
+
+    #[derive(Copy, Clone, Debug, Default)]
+    pub struct Limits {
         pub min: u32,
-        // The maximum size, as a multiple of the page size.
         pub max: Option<u32>,
     }
 
+    impl IntoBytes for Limits {
+        fn into_bytes(self) -> Vec<u8> {
+            let mut buf = Vec::new();
+
+            // Header
+            buf.push(if self.max.is_some() { 0x01 } else { 0x00 });
+            // Min value
+            buf.extend(self.min.into_bytes());
+            // Max value if it exists
+            if let Some(max) = self.max {
+                buf.extend(max.into_bytes());
+            }
+
+            buf
+        }
+    }
+
     pub mod binary {
+        use std::marker::PhantomData;
+
         pub const MAGIC_NUM: [u8; 4] = *b"\0asm";
         pub const VERSION: [u8; 4] = [0x01, 0x00, 0x00, 0x00];
 
@@ -303,5 +353,78 @@ mod wasm {
 
         // Numeric
         pub const CONST_I32: u8 = 0x41;
+
+        pub trait IntoBytes {
+            fn into_bytes(self) -> Vec<u8>;
+        }
+
+        pub struct WasmVec<T> {
+            vec: Vec<u8>,
+            size: u32,
+            _phantom: PhantomData<T>,
+        }
+
+        impl<T> WasmVec<T> {
+            pub fn new() -> Self {
+                WasmVec {
+                    vec: Vec::new(),
+                    size: 0,
+                    _phantom: PhantomData,
+                }
+            }
+
+            pub fn extend<V: IntoBytes, I: IntoIterator<Item = V>>(&mut self, items: I) {
+                self.vec.extend(items.into_iter().flat_map(|i| {
+                    self.size += 1;
+                    i.into_bytes()
+                }))
+            }
+
+            pub fn size(&self) -> u32 {
+                self.size
+            }
+        }
+
+        impl<T> IntoBytes for WasmVec<T> {
+            fn into_bytes(self) -> Vec<u8> {
+                let mut buf = Vec::new();
+
+                // Write the header
+                buf.extend(self.size.into_bytes());
+
+                // Write the actual bytes
+                buf.extend(self.vec);
+
+                buf
+            }
+        }
+
+        impl<T> Default for WasmVec<T> {
+            fn default() -> Self {
+                WasmVec::new()
+            }
+        }
+
+        impl<T> std::ops::Deref for WasmVec<T> {
+            type Target = Vec<u8>;
+
+            fn deref(&self) -> &Self::Target {
+                &self.vec
+            }
+        }
+
+        impl IntoBytes for u32 {
+            fn into_bytes(self) -> Vec<u8> {
+                let mut buf = Vec::new();
+                leb128::write::unsigned(&mut buf, self.into()).unwrap();
+                buf
+            }
+        }
+
+        impl IntoBytes for u8 {
+            fn into_bytes(self) -> Vec<u8> {
+                vec![self]
+            }
+        }
     }
 }
