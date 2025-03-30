@@ -1,4 +1,4 @@
-use wasm::binary::IntoBytes;
+use wasm::binary::{IntoBytes, WasmVec};
 
 use crate::ast;
 
@@ -58,8 +58,8 @@ impl WasmGenState {
                 self.gen_box();
 
                 let idx = self.cur_func.insert_local(wasm::ValType::I32);
-                self.cur_func.body.extend([wasm::binary::LOCAL_SET]);
-                self.cur_func.body.extend([idx]);
+                self.cur_func.body.extend(wasm::binary::LOCAL_SET);
+                self.cur_func.body.extend(idx);
             }
             ast::BindingMetadata::Func {
                 arguments,
@@ -95,7 +95,7 @@ impl WasmGenState {
         let idx = self.mem_store.alloc(4);
 
         // Write the memory location
-        self.cur_func.body.extend([idx]);
+        self.cur_func.body.extend(idx);
 
         // Store that value in memory
         self.cur_func.body.extend([
@@ -149,17 +149,32 @@ mod wasm {
         // appropriate section (eg funcs section) to make indexing easier.
         pub funcs: Functions,
         pub mem_sec: MemorySection,
+        pub start_sec: Option<StartSection>,
     }
 
     impl IntoBytes for Module {
         fn into_bytes(self) -> Vec<u8> {
-            let mut buf = Vec::new();
+            let (func_sec, code_sec): (FunctionSection, CodeSection) = self
+                .funcs
+                .funcs
+                .into_iter()
+                .map(|Func { ty, locals, body }| (ty, FuncCode::from((locals, body))))
+                .unzip();
 
+            let mut import_section = ImportSection::new();
+            import_section.extend(self.funcs.imports);
+
+            let mut buf = Vec::new();
             buf.extend(binary::MAGIC_NUM);
             buf.extend(binary::VERSION);
-
             buf.extend(self.ty_sec.into_bytes());
-
+            buf.extend(func_sec.into_bytes());
+            buf.extend(import_section.into_bytes());
+            buf.extend(self.mem_sec.into_bytes());
+            if let Some(start_sec) = self.start_sec {
+                buf.extend(start_sec.into_bytes());
+            }
+            buf.extend(code_sec.into_bytes());
             buf
         }
     }
@@ -197,6 +212,12 @@ mod wasm {
     #[derive(Clone, Copy, Debug)]
     pub struct TypeIdx(u32);
 
+    impl IntoBytes for TypeIdx {
+        fn into_bytes(self) -> Vec<u8> {
+            self.0.into_bytes()
+        }
+    }
+
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct FuncType {
         pub params: WasmVec<ValType>,
@@ -230,6 +251,98 @@ mod wasm {
                 ValType::F32 => vec![0x7D],
                 ValType::F64 => vec![0x7C],
             }
+        }
+    }
+
+    struct ImportSection {
+        // Untyped raw bytes
+        imports: WasmVec<u8>,
+    }
+
+    impl ImportSection {
+        fn new() -> Self {
+            ImportSection {
+                imports: WasmVec::new(),
+            }
+        }
+
+        fn extend(&mut self, imports: impl IntoBytes) {
+            self.imports.extend(imports.into_bytes())
+        }
+    }
+
+    impl IntoBytes for ImportSection {
+        fn into_bytes(self) -> Vec<u8> {
+            let mut buf = self.imports.into_bytes();
+            buf.splice(..0, [binary::SEC_IMPORT]);
+            buf
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct FunctionSection {
+        funcs: WasmVec<TypeIdx>,
+    }
+
+    impl Extend<TypeIdx> for FunctionSection {
+        fn extend<T: IntoIterator<Item = TypeIdx>>(&mut self, iter: T) {
+            self.funcs.extend(iter)
+        }
+    }
+
+    impl IntoBytes for FunctionSection {
+        fn into_bytes(self) -> Vec<u8> {
+            let mut buf = self.funcs.into_bytes();
+            buf.splice(..0, [binary::SEC_FUNC]);
+            buf
+        }
+    }
+
+    #[derive(Debug, Default)]
+    struct CodeSection {
+        codes: WasmVec<FuncCode>,
+    }
+
+    impl Extend<FuncCode> for CodeSection {
+        fn extend<T: IntoIterator<Item = FuncCode>>(&mut self, iter: T) {
+            self.codes.extend(iter)
+        }
+    }
+
+    impl IntoBytes for CodeSection {
+        fn into_bytes(self) -> Vec<u8> {
+            let mut buf = self.codes.into_bytes();
+            buf.splice(..0, [binary::SEC_CODE]);
+            buf
+        }
+    }
+
+    #[derive(Debug)]
+    struct FuncCode {
+        locals: WasmVec<ValType>,
+        expr: binary::Expr,
+    }
+
+    impl From<(WasmVec<ValType>, binary::Expr)> for FuncCode {
+        fn from(value: (WasmVec<ValType>, binary::Expr)) -> Self {
+            FuncCode {
+                locals: value.0,
+                expr: value.1,
+            }
+        }
+    }
+
+    impl IntoBytes for FuncCode {
+        fn into_bytes(self) -> Vec<u8> {
+            let mut code = self.locals.into_bytes();
+            code.extend(self.expr.into_bytes());
+            code.push(binary::END);
+
+            // Write size header
+            let size = (code.len() as u32).into_bytes();
+            code.splice(..0, size);
+
+            code
         }
     }
 
@@ -271,8 +384,7 @@ mod wasm {
     pub struct Func {
         pub ty: TypeIdx,
         locals: WasmVec<ValType>,
-        /// The raw bytes of the instructions. Shoud not include the END opcode.
-        pub body: WasmVec<Instr>,
+        pub body: binary::Expr,
     }
 
     impl Func {
@@ -280,7 +392,7 @@ mod wasm {
             Func {
                 ty,
                 locals: WasmVec::new(),
-                body: WasmVec::new(),
+                body: binary::Expr::new(),
             }
         }
 
@@ -310,6 +422,14 @@ mod wasm {
             let idx = MemIdx(self.memories.size());
             self.memories.extend([mem]);
             idx
+        }
+    }
+
+    impl IntoBytes for MemorySection {
+        fn into_bytes(self) -> Vec<u8> {
+            let mut buf = self.memories.into_bytes();
+            buf.splice(..0, [binary::SEC_MEM]);
+            buf
         }
     }
 
@@ -345,6 +465,19 @@ mod wasm {
                 buf.extend(max.into_bytes());
             }
 
+            buf
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct StartSection {
+        pub func: FuncIdx,
+    }
+
+    impl IntoBytes for StartSection {
+        fn into_bytes(self) -> Vec<u8> {
+            let mut buf = vec![binary::SEC_START];
+            buf.extend(self.func.into_bytes());
             buf
         }
     }
@@ -469,6 +602,32 @@ mod wasm {
             }
         }
 
+        /// The raw bytes of the instructions. Shoud not include the END opcode.
+        #[derive(Debug)]
+        pub struct Expr {
+            instructions: Vec<u8>,
+        }
+
+        impl Expr {
+            pub fn new() -> Self {
+                Expr {
+                    instructions: Vec::new(),
+                }
+            }
+
+            pub fn extend(&mut self, instr: impl IntoBytes) {
+                self.instructions.extend(instr.into_bytes());
+            }
+        }
+
+        impl IntoBytes for Expr {
+            fn into_bytes(self) -> Vec<u8> {
+                let mut buf = self.instructions;
+                buf.push(END);
+                buf
+            }
+        }
+
         impl IntoBytes for u32 {
             fn into_bytes(self) -> Vec<u8> {
                 let mut buf = Vec::new();
@@ -480,6 +639,12 @@ mod wasm {
         impl IntoBytes for u8 {
             fn into_bytes(self) -> Vec<u8> {
                 vec![self]
+            }
+        }
+
+        impl<const N: usize, T: IntoBytes> IntoBytes for [T; N] {
+            fn into_bytes(self) -> Vec<u8> {
+                self.into_iter().flat_map(|e| e.into_bytes()).collect()
             }
         }
     }
