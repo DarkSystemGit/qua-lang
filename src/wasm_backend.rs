@@ -358,6 +358,7 @@ mod wasm {
             fn into_bytes(self) -> Vec<u8>;
         }
 
+        #[derive(Clone, Debug, PartialEq, Eq, Hash)]
         pub struct WasmVec<T> {
             vec: Vec<u8>,
             size: u32,
@@ -410,6 +411,14 @@ mod wasm {
 
             fn deref(&self) -> &Self::Target {
                 &self.vec
+            }
+        }
+
+        impl<A: IntoBytes> FromIterator<A> for WasmVec<A> {
+            fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self {
+                let mut vec = WasmVec::new();
+                vec.extend(iter);
+                vec
             }
         }
 
