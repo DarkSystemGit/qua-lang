@@ -9,6 +9,7 @@ pub fn gen_wasm(program: ast::Program) -> Vec<u8> {
 struct WasmGenState {
     module: wasm::Module,
     cur_func: wasm::Func,
+    mem_store: MemStore,
 }
 impl WasmGenState {
     fn new() -> Self {
@@ -29,6 +30,7 @@ impl WasmGenState {
         WasmGenState {
             module,
             cur_func: main_func,
+            mem_store: MemStore::new(),
         }
     }
 
@@ -75,6 +77,26 @@ impl WasmGenState {
         todo!()
     }
 }
+
+struct MemStore {
+    next_idx: u32,
+}
+
+impl MemStore {
+    pub fn new() -> Self {
+        MemStore { next_idx: 0 }
+    }
+
+    /// # Parameters:
+    /// - `size`: The size in bytes.
+    pub fn alloc(&mut self, size: u32) -> MemIdx {
+        let idx = MemIdx(self.next_idx);
+        self.next_idx += size;
+        idx
+    }
+}
+
+pub struct MemIdx(u32);
 
 mod wasm {
     use std::collections::HashMap;
