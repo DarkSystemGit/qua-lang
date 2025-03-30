@@ -20,7 +20,12 @@ pub fn gen_wasm(program: Program) -> Vec<u8> {
                         results: vec![result_ty],
                     };
 
-                    let ty_idx = module.ty_sec.insert(ty);
+                    let ty = module.ty_sec.insert(ty);
+                    let locals = vec![];
+                    let body = vec![];
+
+                    let func = wasm::Func { ty, locals, body };
+                    module.funcs.insert(func);
                 }
             },
             ast::Stmt::Expr(expr) => todo!(),
@@ -36,6 +41,9 @@ mod wasm {
     #[derive(Default)]
     pub struct Module {
         pub ty_sec: TypeSection,
+        // No imports section here b/c it's better to put imports inside the
+        // appropriate section (eg funcs section) to make indexing easier.
+        pub funcs: Functions,
     }
 
     impl Module {
@@ -82,4 +90,42 @@ mod wasm {
         F32,
         F64,
     }
+
+    /// *Not* the functions section. It is a merge of the function, code, and
+    /// (function) imports section.
+    #[derive(Default)]
+    pub struct Functions {
+        imports: Vec<FuncImport>,
+        funcs: Vec<Func>,
+    }
+
+    impl Functions {
+        fn next_idx(&self) -> FuncIdx {
+            FuncIdx(self.imports.len() + self.funcs.len())
+        }
+
+        pub fn insert(&mut self, func: Func) -> FuncIdx {
+            let idx = self.next_idx();
+            self.funcs.push(func);
+            idx
+        }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    pub struct FuncIdx(usize);
+
+    pub struct FuncImport {
+        pub module: String,
+        pub name: String,
+        pub ty: TypeIdx,
+    }
+
+    pub struct Func {
+        pub ty: TypeIdx,
+        pub locals: Vec<ValType>,
+        /// The raw bytes of the instructions. Must include the END opcode.
+        pub body: Vec<Instr>,
+    }
+
+    pub struct Instr(u8);
 }
