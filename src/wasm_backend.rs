@@ -41,7 +41,7 @@ impl WasmGenState {
     fn gen_stmt(&mut self, stmt: ast::Stmt) {
         match stmt {
             ast::Stmt::Let(binding) => self.gen_binding(binding),
-            ast::Stmt::Expr(expr) => todo!(),
+            ast::Stmt::Expr(expr) => self.gen_expr(expr),
         }
     }
 
@@ -69,6 +69,10 @@ impl WasmGenState {
                 self.module.funcs.insert(func);
             }
         }
+    }
+
+    fn gen_expr(&mut self, expr: ast::Expr) {
+        todo!()
     }
 }
 
