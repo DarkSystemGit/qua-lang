@@ -49,7 +49,14 @@ impl WasmGenState {
 
     fn gen_binding(&mut self, binding: ast::Binding) {
         match binding.metadata {
-            ast::BindingMetadata::Var => todo!(),
+            ast::BindingMetadata::Var => {
+                self.gen_expr(binding.value);
+                self.gen_box();
+
+                let idx = self.cur_func.insert_local(wasm::ValType::I32);
+                self.cur_func.body.extend([wasm::binary::LOCAL_SET]);
+                leb128::write::unsigned(&mut self.cur_func.body, *idx as u64).unwrap();
+            }
             ast::BindingMetadata::Func {
                 arguments,
                 upvalues,
