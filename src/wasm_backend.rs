@@ -3,6 +3,9 @@ use crate::ast::{self, Program};
 pub fn gen_wasm(program: Program) -> Vec<u8> {
     let mut module = wasm::Module::default();
 
+    // The idx is always 0, at least until wasm supports multiple memories
+    let _ = module.mem_sec.insert(wasm::MemType { min: 0, max: None });
+
     for stmt in program {
         match stmt {
             ast::Stmt::Let(binding) => match binding.metadata {
@@ -44,6 +47,7 @@ mod wasm {
         // No imports section here b/c it's better to put imports inside the
         // appropriate section (eg funcs section) to make indexing easier.
         pub funcs: Functions,
+        pub mem_sec: MemorySection,
     }
 
     impl Module {
@@ -128,4 +132,26 @@ mod wasm {
     }
 
     pub struct Instr(u8);
+
+    #[derive(Default)]
+    pub struct MemorySection {
+        memories: Vec<MemType>,
+    }
+
+    impl MemorySection {
+        pub fn insert(&mut self, mem: MemType) -> MemIdx {
+            let idx = MemIdx(self.memories.len());
+            self.memories.push(mem);
+            idx
+        }
+    }
+
+    pub struct MemIdx(usize);
+
+    pub struct MemType {
+        // The minimum size, as a multiple of the page size.
+        pub min: u32,
+        // The maximum size, as a multiple of the page size.
+        pub max: Option<u32>,
+    }
 }
