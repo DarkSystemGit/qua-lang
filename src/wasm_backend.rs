@@ -1,6 +1,6 @@
-use crate::ast::{self, Program};
+use crate::ast;
 
-pub fn gen_wasm(program: Program) -> Vec<u8> {
+pub fn gen_wasm(program: ast::Program) -> Vec<u8> {
     let mut state = WasmGenState::new();
     state.gen_program(program);
     state.module.into_bytes()
@@ -32,7 +32,7 @@ impl WasmGenState {
         }
     }
 
-    fn gen_program(&mut self, program: Vec<ast::Stmt>) {
+    fn gen_program(&mut self, program: ast::Program) {
         for stmt in program {
             self.gen_stmt(stmt);
         }
