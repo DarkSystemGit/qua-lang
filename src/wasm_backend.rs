@@ -76,6 +76,28 @@ impl WasmGenState {
     fn gen_expr(&mut self, expr: ast::Expr) {
         todo!()
     }
+
+    /// Boxes the top item on the stack and returns a pointer to it.
+    ///
+    /// `[I32] -> [I32]`
+    fn gen_box(&mut self) {
+        let idx = self.mem_store.alloc(4);
+
+        // Write the memory location
+        leb128::write::unsigned(&mut self.cur_func.body, idx.0.into()).unwrap();
+
+        // Store that value in memory
+        self.cur_func.body.extend([
+            wasm::binary::MEM_I32_STORE,
+            // Align 0
+            0x01,
+            // Offset 0
+            0x00,
+        ]);
+
+        // Return a pointer to the memory location
+        leb128::write::unsigned(&mut self.cur_func.body, idx.0.into()).unwrap();
+    }
 }
 
 struct MemStore {
