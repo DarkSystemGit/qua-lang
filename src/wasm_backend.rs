@@ -1,7 +1,4 @@
-use wasm::{
-    binary::{IntoBytes, WasmVec},
-    StartSection,
-};
+use wasm::binary::{IntoBytes, WasmVec};
 
 use crate::ast;
 
