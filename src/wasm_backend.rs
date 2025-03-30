@@ -162,14 +162,16 @@ mod wasm {
                 .unzip();
 
             let mut import_section = ImportSection::new();
-            import_section.extend(self.funcs.imports);
+            if self.funcs.imports.len() > 0 {
+                import_section.extend(self.funcs.imports);
+            }
 
             let mut buf = Vec::new();
             buf.extend(binary::MAGIC_NUM);
             buf.extend(binary::VERSION);
             buf.extend(self.ty_sec.into_bytes());
-            buf.extend(func_sec.into_bytes());
             buf.extend(import_section.into_bytes());
+            buf.extend(func_sec.into_bytes());
             buf.extend(self.mem_sec.into_bytes());
             if let Some(start_sec) = self.start_sec {
                 buf.extend(start_sec.into_bytes());
@@ -203,9 +205,7 @@ mod wasm {
 
     impl IntoBytes for TypeSection {
         fn into_bytes(self) -> Vec<u8> {
-            let mut buf = self.types.into_bytes();
-            buf.splice(..0, [binary::SEC_TY]);
-            buf
+            binary::sec_bytes(binary::SEC_TY, self.types)
         }
     }
 
@@ -254,6 +254,7 @@ mod wasm {
         }
     }
 
+    #[derive(Debug)]
     struct ImportSection {
         // Untyped raw bytes
         imports: WasmVec<u8>,
@@ -273,9 +274,7 @@ mod wasm {
 
     impl IntoBytes for ImportSection {
         fn into_bytes(self) -> Vec<u8> {
-            let mut buf = self.imports.into_bytes();
-            buf.splice(..0, [binary::SEC_IMPORT]);
-            buf
+            binary::sec_bytes(binary::SEC_IMPORT, self.imports)
         }
     }
 
@@ -292,9 +291,7 @@ mod wasm {
 
     impl IntoBytes for FunctionSection {
         fn into_bytes(self) -> Vec<u8> {
-            let mut buf = self.funcs.into_bytes();
-            buf.splice(..0, [binary::SEC_FUNC]);
-            buf
+            binary::sec_bytes(binary::SEC_FUNC, self.funcs)
         }
     }
 
@@ -311,9 +308,7 @@ mod wasm {
 
     impl IntoBytes for CodeSection {
         fn into_bytes(self) -> Vec<u8> {
-            let mut buf = self.codes.into_bytes();
-            buf.splice(..0, [binary::SEC_CODE]);
-            buf
+            binary::sec_bytes(binary::SEC_CODE, self.codes)
         }
     }
 
@@ -375,6 +370,7 @@ mod wasm {
         }
     }
 
+    #[derive(Debug)]
     pub struct FuncImport {
         pub module: String,
         pub name: String,
@@ -410,8 +406,6 @@ mod wasm {
         }
     }
 
-    pub type Instr = u8;
-
     #[derive(Default)]
     pub struct MemorySection {
         memories: WasmVec<MemType>,
@@ -427,9 +421,7 @@ mod wasm {
 
     impl IntoBytes for MemorySection {
         fn into_bytes(self) -> Vec<u8> {
-            let mut buf = self.memories.into_bytes();
-            buf.splice(..0, [binary::SEC_MEM]);
-            buf
+            binary::sec_bytes(binary::SEC_MEM, self.memories)
         }
     }
 
@@ -476,9 +468,7 @@ mod wasm {
 
     impl IntoBytes for StartSection {
         fn into_bytes(self) -> Vec<u8> {
-            let mut buf = vec![binary::SEC_START];
-            buf.extend(self.func.into_bytes());
-            buf
+            binary::sec_bytes(binary::SEC_START, self.func)
         }
     }
 
@@ -533,6 +523,22 @@ mod wasm {
 
         // Numeric
         pub const CONST_I32: u8 = 0x41;
+
+        /// Turn a section into bytecode with a proper header.
+        ///
+        /// See <https://webassembly.github.io/spec/core/binary/modules.html#sections>.
+        pub fn sec_bytes(sec_id: u8, contents: impl IntoBytes) -> Vec<u8> {
+            let contents = contents.into_bytes();
+
+            let mut buf = vec![sec_id];
+
+            let size = contents.len() as u32;
+            buf.extend(size.into_bytes());
+
+            buf.extend(contents);
+
+            buf
+        }
 
         pub trait IntoBytes {
             fn into_bytes(self) -> Vec<u8>;
