@@ -22,7 +22,8 @@ impl WasmGenState {
             name: wasm::Name("print".to_string()),
             ty: {
                 let ty = wasm::FuncType {
-                    params: [wasm::ValType::I32].into_iter().collect(),
+                    // TODO: funcs
+                    params: [wasm::ValType::F64].into_iter().collect(),
                     results: WasmVec::new(),
                 };
                 module.ty_sec.insert(ty)
@@ -120,6 +121,9 @@ impl WasmGenState {
                 // Put arguments onto the stack
                 for arg in call.arguments {
                     self.gen_expr(arg);
+                    // Unbox for now so printing works nicely
+                    // TODO: funcs
+                    self.gen_unbox(MemBox::F64);
                 }
 
                 // TODO: funcs
@@ -146,7 +150,7 @@ impl WasmGenState {
 
     /// Boxes the top item on the stack and returns a pointer to it.
     ///
-    /// `[I32] -> [I32]`
+    /// `[T] -> [I32]`
     fn gen_box(&mut self, mem_box: MemBox, gen_value: impl Fn(&mut WasmGenState)) {
         let ptr = self.mem_store.alloc(mem_box.size());
 
@@ -158,7 +162,7 @@ impl WasmGenState {
         gen_value(self);
 
         // Store that value in memory
-        self.cur_func.body.extend(mem_box.instr());
+        self.cur_func.body.extend(mem_box.instr_store());
         self.cur_func.body.extend([
             0x01u8, // Align 1
             0x00,   // Offset 0
@@ -167,6 +171,17 @@ impl WasmGenState {
         // Return a pointer to the memory location
         self.cur_func.body.extend(wasm::binary::CONST_I32);
         self.cur_func.body.extend([ptr]);
+    }
+
+    /// Unboxes the pointer on top of the stack and returns the value.
+    ///
+    /// `[I32] -> [T]`
+    fn gen_unbox(&mut self, mem_box: MemBox) {
+        self.cur_func.body.extend(mem_box.instr_load());
+        self.cur_func.body.extend([
+            0x01u8, // Align 1
+            0x00,   // Offset 0
+        ]);
     }
 }
 
@@ -211,10 +226,17 @@ impl MemBox {
         }
     }
 
-    pub const fn instr(self) -> impl IntoBytes {
+    pub const fn instr_store(self) -> impl IntoBytes {
         match self {
             MemBox::I32 => wasm::binary::MEM_I32_STORE,
             MemBox::F64 => wasm::binary::MEM_F64_STORE,
+        }
+    }
+
+    pub const fn instr_load(self) -> impl IntoBytes {
+        match self {
+            MemBox::I32 => wasm::binary::MEM_I32_LOAD,
+            MemBox::F64 => wasm::binary::MEM_F64_LOAD,
         }
     }
 }
