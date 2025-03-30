@@ -55,7 +55,6 @@ impl WasmGenState {
         match binding.metadata {
             ast::BindingMetadata::Var => {
                 self.gen_expr(binding.value);
-                self.gen_box();
 
                 let idx = self.cur_func.insert_local(wasm::ValType::I32);
                 self.cur_func.body.extend(wasm::binary::LOCAL_SET);
@@ -91,23 +90,26 @@ impl WasmGenState {
     /// Boxes the top item on the stack and returns a pointer to it.
     ///
     /// `[I32] -> [I32]`
-    fn gen_box(&mut self) {
-        let idx = self.mem_store.alloc(4);
+    fn gen_box(&mut self, mem_box: MemBox, gen_value: impl Fn(&mut WasmGenState)) {
+        let ptr = self.mem_store.alloc(mem_box.size());
 
         // Write the memory location
-        self.cur_func.body.extend(idx);
+        self.cur_func.body.extend(wasm::binary::CONST_I32);
+        self.cur_func.body.extend(ptr);
+
+        // Generate the value to store
+        gen_value(self);
 
         // Store that value in memory
+        self.cur_func.body.extend(mem_box.instr());
         self.cur_func.body.extend([
-            wasm::binary::MEM_I32_STORE,
-            // Align 0
-            0x01,
-            // Offset 0
-            0x00,
+            0x01u8, // Align 1
+            0x00,   // Offset 0
         ]);
 
         // Return a pointer to the memory location
-        self.cur_func.body.extend([idx]);
+        self.cur_func.body.extend(wasm::binary::CONST_I32);
+        self.cur_func.body.extend([ptr]);
     }
 }
 
@@ -122,18 +124,41 @@ impl MemStore {
 
     /// # Parameters:
     /// - `size`: The size in bytes.
-    pub fn alloc(&mut self, size: u32) -> MemIdx {
-        let idx = MemIdx(self.next_idx);
+    pub fn alloc(&mut self, size: u32) -> MemPtr {
+        let idx = MemPtr(self.next_idx);
         self.next_idx += size;
         idx
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct MemIdx(u32);
-impl IntoBytes for MemIdx {
+pub struct MemPtr(u32);
+impl IntoBytes for MemPtr {
     fn into_bytes(self) -> Vec<u8> {
         self.0.into_bytes()
+    }
+}
+
+/// The type of value to store in memory.
+#[derive(Clone, Copy, Debug)]
+enum MemBox {
+    I32,
+    F64,
+}
+
+impl MemBox {
+    pub const fn size(self) -> u32 {
+        match self {
+            MemBox::I32 => 32 / 8,
+            MemBox::F64 => 64 / 8,
+        }
+    }
+
+    pub const fn instr(self) -> impl IntoBytes {
+        match self {
+            MemBox::I32 => wasm::binary::MEM_I32_STORE,
+            MemBox::F64 => wasm::binary::MEM_F64_STORE,
+        }
     }
 }
 
@@ -181,7 +206,7 @@ mod wasm {
         }
     }
 
-    #[derive(Default)]
+    #[derive(Debug, Default)]
     pub struct TypeSection {
         types_map: HashMap<FuncType, TypeIdx>,
         types: WasmVec<FuncType>,
@@ -331,7 +356,6 @@ mod wasm {
         fn into_bytes(self) -> Vec<u8> {
             let mut code = self.locals.into_bytes();
             code.extend(self.expr.into_bytes());
-            code.push(binary::END);
 
             // Write size header
             let size = (code.len() as u32).into_bytes();
@@ -510,6 +534,7 @@ mod wasm {
         pub const TY_FUNC: u8 = 0x60;
 
         // Control instructions
+        pub const CALL: u8 = 0x10;
         pub const END: u8 = 0x0B;
 
         // Variable instructions
@@ -520,9 +545,12 @@ mod wasm {
         // Memory instructions
         pub const MEM_I32_LOAD: u8 = 0x28;
         pub const MEM_I32_STORE: u8 = 0x36;
+        pub const MEM_F64_LOAD: u8 = 0x2B;
+        pub const MEM_F64_STORE: u8 = 0x39;
 
         // Numeric
         pub const CONST_I32: u8 = 0x41;
+        pub const CONST_F64: u8 = 0x44;
 
         /// Turn a section into bytecode with a proper header.
         ///
@@ -645,6 +673,12 @@ mod wasm {
         impl IntoBytes for u8 {
             fn into_bytes(self) -> Vec<u8> {
                 vec![self]
+            }
+        }
+
+        impl IntoBytes for f64 {
+            fn into_bytes(self) -> Vec<u8> {
+                self.to_le_bytes().to_vec()
             }
         }
 
