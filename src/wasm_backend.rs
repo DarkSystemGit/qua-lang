@@ -6,45 +6,51 @@ pub fn gen_wasm(program: Program) -> Vec<u8> {
     // The idx is always 0, at least until wasm supports multiple memories
     let _ = module.mem_sec.insert(wasm::MemType { min: 0, max: None });
 
-    let mut main_fn = {
-        let ty = wasm::FuncType {
-            params: vec![],
-            results: vec![],
-        };
-        let ty = module.ty_sec.insert(ty);
-        wasm::Func::new(ty)
-    };
-
-    for stmt in program {
-        match stmt {
-            ast::Stmt::Let(binding) => match binding.metadata {
-                ast::BindingMetadata::Var => todo!(),
-                ast::BindingMetadata::Func {
-                    arguments,
-                    upvalues,
-                } => {
-                    // Everything is boxed (ie an I32)
-                    let param_tys = arguments.iter().map(|_| wasm::ValType::I32).collect();
-                    let result_ty = wasm::ValType::I32;
-                    let ty = wasm::FuncType {
-                        params: param_tys,
-                        // Functions can only have 1 return type as of now
-                        results: vec![result_ty],
-                    };
-
-                    let ty = module.ty_sec.insert(ty);
-                    let func = wasm::Func::new(ty);
-
-                    // TODO: actual generate body
-
-                    module.funcs.insert(func);
-                }
-            },
-            ast::Stmt::Expr(expr) => todo!(),
-        }
-    }
+    module.gen_program(program);
 
     module.into_bytes()
+}
+
+impl wasm::Module {
+    fn gen_program(&mut self, program: Program) {
+        let mut main_fn = {
+            let ty = wasm::FuncType {
+                params: vec![],
+                results: vec![],
+            };
+            let ty = self.ty_sec.insert(ty);
+            wasm::Func::new(ty)
+        };
+
+        for stmt in program {
+            match stmt {
+                ast::Stmt::Let(binding) => match binding.metadata {
+                    ast::BindingMetadata::Var => todo!(),
+                    ast::BindingMetadata::Func {
+                        arguments,
+                        upvalues,
+                    } => {
+                        // Everything is boxed (ie an I32)
+                        let param_tys = arguments.iter().map(|_| wasm::ValType::I32).collect();
+                        let result_ty = wasm::ValType::I32;
+                        let ty = wasm::FuncType {
+                            params: param_tys,
+                            // Functions can only have 1 return type as of now
+                            results: vec![result_ty],
+                        };
+
+                        let ty = self.ty_sec.insert(ty);
+                        let func = wasm::Func::new(ty);
+
+                        // TODO: actual generate body
+
+                        self.funcs.insert(func);
+                    }
+                },
+                ast::Stmt::Expr(expr) => todo!(),
+            }
+        }
+    }
 }
 
 mod wasm {
