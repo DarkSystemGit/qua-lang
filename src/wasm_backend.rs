@@ -20,6 +20,19 @@ impl WasmGenState {
     fn new() -> Self {
         let mut module = wasm::Module::default();
 
+        let import_host_print = wasm::FuncImport {
+            module: wasm::Name("host".to_string()),
+            name: wasm::Name("print".to_string()),
+            ty: {
+                let ty = wasm::FuncType {
+                    params: [wasm::ValType::I32].into_iter().collect(),
+                    results: WasmVec::new(),
+                };
+                module.ty_sec.insert(ty)
+            },
+        };
+        module.funcs.insert_import(import_host_print);
+
         // The idx is always 0, at least until wasm supports multiple memories
         let _ = module.mem_sec.insert(wasm::MemType {
             limits: wasm::Limits { min: 64, max: None },
@@ -233,10 +246,9 @@ mod wasm {
                 .map(|Func { ty, locals, body }| (ty, FuncCode::from((locals, body))))
                 .unzip();
 
-            let mut import_section = ImportSection::new();
-            if self.funcs.imports.len() > 0 {
-                import_section.extend(self.funcs.imports);
-            }
+            let import_section = ImportSection {
+                func_imports: self.funcs.imports,
+            };
 
             let mut buf = Vec::new();
             buf.extend(binary::MAGIC_NUM);
@@ -328,25 +340,12 @@ mod wasm {
 
     #[derive(Debug)]
     struct ImportSection {
-        // Untyped raw bytes
-        imports: WasmVec<u8>,
-    }
-
-    impl ImportSection {
-        fn new() -> Self {
-            ImportSection {
-                imports: WasmVec::new(),
-            }
-        }
-
-        fn extend(&mut self, imports: impl IntoBytes) {
-            self.imports.extend(imports.into_bytes())
-        }
+        pub func_imports: WasmVec<FuncImport>,
     }
 
     impl IntoBytes for ImportSection {
         fn into_bytes(self) -> Vec<u8> {
-            binary::sec_bytes(binary::SEC_IMPORT, self.imports)
+            binary::sec_bytes(binary::SEC_IMPORT, self.func_imports)
         }
     }
 
@@ -430,6 +429,17 @@ mod wasm {
             self.funcs.push(func);
             idx
         }
+
+        pub fn insert_import(&mut self, import: FuncImport) -> FuncIdx {
+            if !self.funcs.is_empty() {
+                // Don't continue, because it would mess up any stored indexes.
+                panic!("Tried to add import when `funcs` was non-empty.");
+            }
+
+            let idx = self.next_idx();
+            self.imports.extend([import]);
+            idx
+        }
     }
 
     #[derive(Clone, Copy, Debug)]
@@ -443,9 +453,32 @@ mod wasm {
 
     #[derive(Debug)]
     pub struct FuncImport {
-        pub module: String,
-        pub name: String,
+        pub module: Name,
+        pub name: Name,
         pub ty: TypeIdx,
+    }
+
+    impl IntoBytes for FuncImport {
+        fn into_bytes(self) -> Vec<u8> {
+            let mut buf = Vec::new();
+
+            buf.extend(self.module.into_bytes());
+            buf.extend(self.name.into_bytes());
+
+            buf.push(0x00);
+            buf.extend(self.ty.into_bytes());
+
+            buf
+        }
+    }
+
+    #[derive(Debug)]
+    pub struct Name(pub String);
+    impl IntoBytes for Name {
+        fn into_bytes(self) -> Vec<u8> {
+            let buf = WasmVec::from_iter(self.0.bytes());
+            buf.into_bytes()
+        }
     }
 
     pub struct Func {
