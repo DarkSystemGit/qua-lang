@@ -24,8 +24,8 @@ impl WasmGenState {
 
         let main_func = {
             let ty = wasm::FuncType {
-                params: vec![],
-                results: vec![],
+                params: WasmVec::new(),
+                results: WasmVec::new(),
             };
             let ty = module.ty_sec.insert(ty);
             wasm::Func::new(ty)
@@ -71,7 +71,7 @@ impl WasmGenState {
                 let ty = wasm::FuncType {
                     params: param_tys,
                     // Functions can only have 1 return type as of now
-                    results: vec![result_ty],
+                    results: [result_ty].into_iter().collect(),
                 };
 
                 let ty = self.module.ty_sec.insert(ty);
@@ -160,7 +160,7 @@ mod wasm {
     #[derive(Default)]
     pub struct TypeSection {
         types_map: HashMap<FuncType, TypeIdx>,
-        types: Vec<FuncType>,
+        types: WasmVec<FuncType>,
     }
 
     impl TypeSection {
@@ -168,8 +168,8 @@ mod wasm {
             if let Some(idx) = self.types_map.get(&ty) {
                 *idx
             } else {
-                let next_idx = self.types.len();
-                self.types.push(ty.clone());
+                let next_idx = self.types.size();
+                self.types.extend([ty.clone()]);
 
                 let idx = TypeIdx(next_idx);
                 self.types_map.insert(ty, idx);
@@ -180,12 +180,23 @@ mod wasm {
     }
 
     #[derive(Clone, Copy, Debug)]
-    pub struct TypeIdx(usize);
+    pub struct TypeIdx(u32);
 
     #[derive(Clone, Debug, PartialEq, Eq, Hash)]
     pub struct FuncType {
-        pub params: Vec<ValType>,
-        pub results: Vec<ValType>,
+        pub params: WasmVec<ValType>,
+        pub results: WasmVec<ValType>,
+    }
+
+    impl IntoBytes for FuncType {
+        fn into_bytes(self) -> Vec<u8> {
+            let mut buf = vec![binary::TY_FUNC];
+
+            buf.extend(self.params.into_bytes());
+            buf.extend(self.results.into_bytes());
+
+            buf
+        }
     }
 
     #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
