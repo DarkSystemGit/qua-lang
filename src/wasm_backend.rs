@@ -22,7 +22,7 @@ impl WasmGenState {
 
         // The idx is always 0, at least until wasm supports multiple memories
         let _ = module.mem_sec.insert(wasm::MemType {
-            limits: wasm::Limits { min: 0, max: None },
+            limits: wasm::Limits { min: 64, max: None },
         });
 
         let main_func = {
