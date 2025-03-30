@@ -6,6 +6,15 @@ pub fn gen_wasm(program: Program) -> Vec<u8> {
     // The idx is always 0, at least until wasm supports multiple memories
     let _ = module.mem_sec.insert(wasm::MemType { min: 0, max: None });
 
+    let mut main_fn = {
+        let ty = wasm::FuncType {
+            params: vec![],
+            results: vec![],
+        };
+        let ty = module.ty_sec.insert(ty);
+        wasm::Func::new(ty)
+    };
+
     for stmt in program {
         match stmt {
             ast::Stmt::Let(binding) => match binding.metadata {
@@ -24,10 +33,10 @@ pub fn gen_wasm(program: Program) -> Vec<u8> {
                     };
 
                     let ty = module.ty_sec.insert(ty);
-                    let locals = vec![];
-                    let body = vec![];
+                    let func = wasm::Func::new(ty);
 
-                    let func = wasm::Func { ty, locals, body };
+                    // TODO: actual generate body
+
                     module.funcs.insert(func);
                 }
             },
@@ -126,10 +135,28 @@ mod wasm {
 
     pub struct Func {
         pub ty: TypeIdx,
-        pub locals: Vec<ValType>,
-        /// The raw bytes of the instructions. Must include the END opcode.
+        locals: Vec<ValType>,
+        /// The raw bytes of the instructions. Shoud not include the END opcode.
         pub body: Vec<Instr>,
     }
+
+    impl Func {
+        pub fn new(ty: TypeIdx) -> Self {
+            Func {
+                ty,
+                locals: Vec::new(),
+                body: Vec::new(),
+            }
+        }
+
+        pub fn insert_local(&mut self, ty: ValType) -> LocalIdx {
+            let idx = LocalIdx(self.locals.len());
+            self.locals.push(ty);
+            idx
+        }
+    }
+
+    pub struct LocalIdx(usize);
 
     pub struct Instr(u8);
 
@@ -153,5 +180,41 @@ mod wasm {
         pub min: u32,
         // The maximum size, as a multiple of the page size.
         pub max: Option<u32>,
+    }
+
+    pub mod binary {
+        pub const MAGIC_NUM: [u8; 4] = *b"\0asm";
+        pub const VERSION: [u8; 4] = [0x01, 0x00, 0x00, 0x00];
+
+        // Number types
+        pub const TY_I32: u8 = 0x7F;
+        pub const TY_I64: u8 = 0x7E;
+        pub const TY_F32: u8 = 0x7D;
+        pub const TY_F64: u8 = 0x7C;
+
+        // Vector type
+        pub const TY_VEC: u8 = 0x7B;
+
+        // Reference types
+        pub const TY_FUNC_REF: u8 = 0x70;
+        pub const TY_EXTERN_REF: u8 = 0x6F;
+
+        // Function type
+        pub const TY_FUNC: u8 = 0x60;
+
+        // Control instructions
+        pub const END: u8 = 0x0B;
+
+        // Variable instructions
+        pub const LOCAL_GET: u8 = 0x20;
+        pub const LOCAL_SET: u8 = 0x21;
+        pub const LOCAL_TEE: u8 = 0x22;
+
+        // Memory instructions
+        pub const MEM_I32_LOAD: u8 = 0x28;
+        pub const MEM_I32_STORE: u8 = 0x36;
+
+        // Numeric
+        pub const CONST_I32: u8 = 0x41;
     }
 }
