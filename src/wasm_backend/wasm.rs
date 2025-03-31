@@ -21,7 +21,14 @@ impl IntoBytes for Module {
             .funcs
             .funcs
             .into_iter()
-            .map(|Func { ty, locals, body }| (ty, FuncCode::from((locals, body))))
+            .map(
+                |Func {
+                     ty,
+                     locals,
+                     body,
+                     next_local_idx: _,
+                 }| (ty, FuncCode::from((locals, body))),
+            )
             .unzip();
 
         let import_section = ImportSection {
@@ -162,14 +169,14 @@ impl IntoBytes for CodeSection {
 
 #[derive(Debug)]
 struct FuncCode {
-    locals: WasmVec<ValType>,
+    locals: WasmVec<Local>,
     expr: binary::Expr,
 }
 
-impl From<(WasmVec<ValType>, binary::Expr)> for FuncCode {
-    fn from(value: (WasmVec<ValType>, binary::Expr)) -> Self {
+impl From<(Vec<Local>, binary::Expr)> for FuncCode {
+    fn from(value: (Vec<Local>, binary::Expr)) -> Self {
         FuncCode {
-            locals: value.0,
+            locals: value.0.into_iter().collect(),
             expr: value.1,
         }
     }
@@ -260,7 +267,8 @@ impl IntoBytes for Name {
 
 pub struct Func {
     pub ty: TypeIdx,
-    locals: WasmVec<ValType>,
+    locals: Vec<Local>,
+    next_local_idx: u32,
     pub body: binary::Expr,
 }
 
@@ -268,18 +276,45 @@ impl Func {
     pub fn new(ty: TypeIdx) -> Self {
         Func {
             ty,
-            locals: WasmVec::new(),
+            locals: Vec::new(),
+            next_local_idx: 0,
             body: binary::Expr::new(),
         }
     }
 
     pub fn insert_local(&mut self, ty: ValType) -> LocalIdx {
-        let idx = LocalIdx(self.locals.size());
-        self.locals.extend([ty]);
+        match self.locals.last_mut() {
+            Some(local) if local.ty == ty => local.num += 1,
+            Some(_) | None => self.locals.push(Local::new(ty)),
+        }
+
+        let idx = LocalIdx(self.next_local_idx);
+        self.next_local_idx += 1;
         idx
     }
 }
 
+#[derive(Debug)]
+struct Local {
+    num: u32,
+    ty: ValType,
+}
+
+impl Local {
+    fn new(ty: ValType) -> Self {
+        Local { num: 1, ty }
+    }
+}
+
+impl IntoBytes for Local {
+    fn into_bytes(self) -> Vec<u8> {
+        let mut buf = self.num.into_bytes();
+        buf.extend(self.ty.into_bytes());
+        buf
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
 pub struct LocalIdx(u32);
 impl IntoBytes for LocalIdx {
     fn into_bytes(self) -> Vec<u8> {
