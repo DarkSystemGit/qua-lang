@@ -251,6 +251,34 @@ impl WasmGenState {
             0x00,   // Offset 0
         ]);
     }
+
+    /// Unboxes the pointer on top of the stack, runs `func()` to work with it,
+    /// and then reboxes the top of the stack.
+    ///
+    /// `[I32] -> [I32]`
+    ///
+    /// # Parameters
+    /// - `mem_unbox`: What to unbox into before `func()` is run.
+    /// - `mem_rebox`: What to rebox into after `func()` is run.
+    /// - `func`: The function to run w/ the unboxed value. Must be `[Unbox] -> [Rebox]`.
+    fn unwrap_box(
+        &mut self,
+        mem_unbox: MemBox,
+        mem_rebox: MemBox,
+        func: impl Fn(&mut WasmGenState),
+    ) {
+        self.gen_unbox(mem_unbox);
+
+        func(self);
+        let res_idx = self.gen_local_set(mem_rebox.into());
+
+        self.gen_box(
+            mem_rebox,
+            [|state: &mut Self| {
+                state.gen_local_get(res_idx);
+            }],
+        );
+    }
 }
 
 struct MemStore {
@@ -328,6 +356,19 @@ impl MemBox {
             MemBox::F64 => wasm::binary::MEM_F64_LOAD,
             MemBox::I32_8U => wasm::binary::MEM_I32_LOAD_8U,
             MemBox::I32_16U => wasm::binary::MEM_I32_LOAD_16U,
+        }
+    }
+}
+
+impl From<MemBox> for wasm::ValType {
+    fn from(value: MemBox) -> Self {
+        use wasm::ValType;
+        match value {
+            MemBox::I32 => ValType::I32,
+            MemBox::I64 => ValType::I64,
+            MemBox::F64 => ValType::F64,
+            MemBox::I32_8U => ValType::I32,
+            MemBox::I32_16U => ValType::I32,
         }
     }
 }
