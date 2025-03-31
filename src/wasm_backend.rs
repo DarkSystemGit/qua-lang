@@ -33,8 +33,7 @@ impl WasmGenState {
         };
         module.funcs.insert_import(import_host_print);
 
-        // The idx is always 0, at least until wasm supports multiple memories
-        let _ = module.mem_sec.insert(wasm::MemType {
+        let mem_idx = module.mem_sec.insert(wasm::MemType {
             limits: wasm::Limits { min: 64, max: None },
         });
 
@@ -50,15 +49,26 @@ impl WasmGenState {
         WasmGenState {
             module,
             cur_func: main_func,
-            mem_store: MemStore::new(),
+            mem_store: MemStore::new(mem_idx),
         }
     }
 
     fn finish(mut self) -> Vec<u8> {
         // Set up main function
-        let idx = self.module.funcs.insert(self.cur_func);
-        let start_sec = wasm::StartSection { func: idx };
-        self.module.start_sec = Some(start_sec);
+        let main_idx = self.module.funcs.insert(self.cur_func);
+
+        // let start_sec = wasm::StartSection { func: idx };
+        // self.module.start_sec = Some(start_sec);
+        let mut export_sec = wasm::ExportSection::new();
+        export_sec.insert(wasm::Export {
+            name: wasm::Name("main".to_string()),
+            desc: wasm::ExportDesc::Func(main_idx),
+        });
+        export_sec.insert(wasm::Export {
+            name: wasm::Name("mem".to_string()),
+            desc: wasm::ExportDesc::Mem(self.mem_store.mem_idx),
+        });
+        self.module.export_sec = Some(export_sec);
 
         self.module.into_bytes()
     }
@@ -211,12 +221,16 @@ impl WasmGenState {
 }
 
 struct MemStore {
+    mem_idx: wasm::MemIdx,
     next_idx: u32,
 }
 
 impl MemStore {
-    pub fn new() -> Self {
-        MemStore { next_idx: 0 }
+    pub fn new(mem_idx: wasm::MemIdx) -> Self {
+        MemStore {
+            mem_idx,
+            next_idx: 0,
+        }
     }
 
     /// # Parameters:

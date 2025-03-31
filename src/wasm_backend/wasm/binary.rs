@@ -222,3 +222,12 @@ impl<T: IntoBytes + Copy> IntoBytes for &[T] {
         self.iter().flat_map(|e| e.into_bytes()).collect()
     }
 }
+
+impl<T: IntoBytes> IntoBytes for Option<T> {
+    fn into_bytes(self) -> Vec<u8> {
+        match self {
+            Some(value) => value.into_bytes(),
+            None => Vec::new(),
+        }
+    }
+}
