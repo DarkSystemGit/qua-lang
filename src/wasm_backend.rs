@@ -143,14 +143,20 @@ impl WasmGenState {
             ast::Expr::Binary(binary_expr) => todo!(),
             ast::Expr::Unary(unary_expr) => todo!(),
             ast::Expr::Literal(literal) => match literal {
-                ast::Literal::Bool(b) => self.gen_box(MemBox::I32, |state| {
-                    state.cur_func.body.extend(wasm::binary::CONST_I32);
-                    state.cur_func.body.extend(b);
-                }),
-                ast::Literal::Number(n) => self.gen_box(MemBox::F64, |state| {
-                    state.cur_func.body.extend(wasm::binary::CONST_F64);
-                    state.cur_func.body.extend(n);
-                }),
+                ast::Literal::Bool(b) => self.gen_box(
+                    MemBox::I32,
+                    [|state: &mut Self| {
+                        state.cur_func.body.extend(wasm::binary::CONST_I32);
+                        state.cur_func.body.extend(b);
+                    }],
+                ),
+                ast::Literal::Number(n) => self.gen_box(
+                    MemBox::F64,
+                    [|state: &mut Self| {
+                        state.cur_func.body.extend(wasm::binary::CONST_F64);
+                        state.cur_func.body.extend(n);
+                    }],
+                ),
                 ast::Literal::Str(s) => {
                     // Encode as a WasmVec of UTF-8 chars
                     let len: u32 = s.bytes().len().try_into().unwrap();
@@ -160,22 +166,18 @@ impl WasmGenState {
                         buf.extend(s.into_bytes());
                         buf
                     };
-                    let len = buf.len();
 
-                    for byte in buf {
-                        let byte = byte as i32;
-                        self.gen_box(MemBox::I32_8U, |state| {
-                            state.cur_func.body.extend(wasm::binary::CONST_I32);
-                            dbg!(byte, format!("0x {:02X?}", byte.into_bytes()));
-                            state.cur_func.body.extend(byte);
-                        });
-                    }
-
-                    // Generate enough DROPs to remain with only the first
-                    // address on the stack
-                    for _ in 0..len - 1 {
-                        self.cur_func.body.extend(wasm::binary::DROP);
-                    }
+                    self.gen_box(
+                        MemBox::I32_8U,
+                        buf.into_iter().map(|byte| {
+                            // Make sure it gets encoded w/ LEB128 and not as an opcode
+                            let byte = byte as i32;
+                            move |state: &mut Self| {
+                                state.cur_func.body.extend(wasm::binary::CONST_I32);
+                                state.cur_func.body.extend(byte);
+                            }
+                        }),
+                    );
                 }
                 ast::Literal::Nil => todo!(),
             },
@@ -186,22 +188,38 @@ impl WasmGenState {
     /// Boxes the top item on the stack and returns a pointer to it.
     ///
     /// `[T] -> [I32]`
-    fn gen_box(&mut self, mem_box: MemBox, gen_value: impl Fn(&mut WasmGenState)) {
-        let ptr = self.mem_store.alloc(mem_box.size());
+    fn gen_box<T: Fn(&mut WasmGenState), I: IntoIterator<Item = T>>(
+        &mut self,
+        mem_box: MemBox,
+        gen_values: I,
+        // gen_values: &[impl Fn(&mut WasmGenState)],
+    ) where
+        I::IntoIter: ExactSizeIterator,
+    {
+        let gen_values = gen_values.into_iter();
+        let len: u32 = gen_values.len().try_into().unwrap();
 
-        // Write the memory location
-        self.cur_func.body.extend(wasm::binary::CONST_I32);
-        self.cur_func.body.extend(ptr);
+        let ptr = self.mem_store.alloc(mem_box.size() * len);
+        let mut offset = 0;
 
-        // Generate the value to store
-        gen_value(self);
+        for gen_value in gen_values {
+            // Write the memory location
+            self.cur_func.body.extend(wasm::binary::CONST_I32);
+            self.cur_func.body.extend(ptr.offset(offset));
 
-        // Store that value in memory
-        self.cur_func.body.extend(mem_box.instr_store());
-        self.cur_func.body.extend([
-            0x00u8, // Align 2^0=1
-            0x00,   // Offset 0
-        ]);
+            // Generate the value to store
+            gen_value(self);
+
+            // Store that value in memory
+            self.cur_func.body.extend(mem_box.instr_store());
+            self.cur_func.body.extend([
+                0x00u8, // Align 2^0=1
+                0x00,   // Offset 0
+            ]);
+
+            // Increase offset
+            offset += mem_box.size() as i32;
+        }
 
         // Return a pointer to the memory location
         self.cur_func.body.extend(wasm::binary::CONST_I32);
@@ -244,6 +262,12 @@ impl MemStore {
 
 #[derive(Clone, Copy, Debug)]
 pub struct MemPtr(i32);
+impl MemPtr {
+    fn offset(mut self, amount: i32) -> MemPtr {
+        self.0 += amount;
+        self
+    }
+}
 impl IntoBytes for MemPtr {
     fn into_bytes(self) -> Vec<u8> {
         self.0.into_bytes()
