@@ -122,6 +122,50 @@ impl IntoBytes for ValType {
     }
 }
 
+/// The type of value to store in memory.
+#[derive(Clone, Copy, Debug)]
+pub enum BoxType {
+    Num,
+    Bool,
+    Byte,
+}
+
+impl BoxType {
+    pub const fn size(self) -> u32 {
+        match self {
+            BoxType::Num => 64 / 8,
+            BoxType::Bool => 8 / 8,
+            BoxType::Byte => 8 / 8,
+        }
+    }
+
+    pub const fn instr_store(self) -> impl IntoBytes {
+        match self {
+            BoxType::Num => binary::MEM_F64_STORE,
+            BoxType::Bool => binary::MEM_I32_STORE_8,
+            BoxType::Byte => binary::MEM_I32_STORE_8,
+        }
+    }
+
+    pub const fn instr_load(self) -> impl IntoBytes {
+        match self {
+            BoxType::Num => binary::MEM_F64_LOAD,
+            BoxType::Bool => binary::MEM_I32_LOAD_8U,
+            BoxType::Byte => binary::MEM_I32_LOAD_8U,
+        }
+    }
+}
+
+impl From<BoxType> for ValType {
+    fn from(value: BoxType) -> Self {
+        match value {
+            BoxType::Num => ValType::F64,
+            BoxType::Bool => ValType::I32,
+            BoxType::Byte => ValType::I32,
+        }
+    }
+}
+
 #[derive(Debug)]
 struct ImportSection {
     pub func_imports: WasmVec<FuncImport>,
@@ -291,6 +335,106 @@ impl Func {
         let idx = LocalIdx(self.next_local_idx);
         self.next_local_idx += 1;
         idx
+    }
+
+    /// Places the value on the top of the stack into a new local.
+    ///
+    /// `[T] -> []`
+    pub fn gen_local_set(&mut self, ty: ValType) -> LocalIdx {
+        let idx = self.insert_local(ty);
+        self.body.extend(binary::LOCAL_SET);
+        self.body.extend(idx);
+        idx
+    }
+
+    /// Reads from a local and places it on the stack.
+    ///
+    /// `[] -> [T]`
+    pub fn gen_local_get(&mut self, idx: LocalIdx) {
+        self.body.extend(binary::LOCAL_GET);
+        self.body.extend(idx);
+    }
+
+    /// Boxes the top item on the stack and returns a pointer to it.
+    ///
+    /// `[T] -> [I32]`
+    pub fn gen_box<T: FnOnce(&mut Self), I: IntoIterator<Item = T>>(
+        &mut self,
+        ptr: super::MemPtr,
+        box_ty: BoxType,
+        gen_values: I,
+        // gen_values: &[impl Fn(&mut WasmGenState)],
+    ) where
+        I::IntoIter: ExactSizeIterator,
+    {
+        let gen_values = gen_values.into_iter();
+        let len: u32 = gen_values.len().try_into().unwrap();
+
+        let mut offset = 0;
+
+        for gen_value in gen_values {
+            // Write the memory location
+            self.body.extend(binary::CONST_I32);
+            self.body.extend(ptr.offset(offset));
+
+            // Generate the value to store
+            gen_value(self);
+
+            // Store that value in memory
+            self.body.extend(box_ty.instr_store());
+            self.body.extend([
+                0x00u8, // Align 2^0=1
+                0x00,   // Offset 0
+            ]);
+
+            // Increase offset
+            offset += box_ty.size() as i32;
+        }
+
+        // Return a pointer to the memory location
+        self.body.extend(binary::CONST_I32);
+        self.body.extend([ptr]);
+    }
+
+    /// Unboxes the pointer on top of the stack and returns the value.
+    ///
+    /// `[I32] -> [T]`
+    pub fn gen_unbox(&mut self, box_ty: BoxType) {
+        self.body.extend(box_ty.instr_load());
+        self.body.extend([
+            0x00u8, // Align 2^0=1
+            0x00,   // Offset 0
+        ]);
+    }
+
+    /// Unboxes the pointer on top of the stack, runs `func()` to work with it,
+    /// and then reboxes the top of the stack.
+    ///
+    /// `[I32] -> [I32]`
+    ///
+    /// # Parameters
+    /// - `mem_unbox`: What to unbox into before `func()` is run.
+    /// - `mem_rebox`: What to rebox into after `func()` is run.
+    /// - `func`: The function to run w/ the unboxed value. Must be `[Unbox] -> [Rebox]`.
+    pub fn unwrap_box(
+        &mut self,
+        ptr: super::MemPtr,
+        unbox_ty: BoxType,
+        rebox_ty: BoxType,
+        func: impl FnOnce(&mut Self),
+    ) {
+        self.gen_unbox(unbox_ty);
+
+        func(self);
+        let res_idx = self.gen_local_set(rebox_ty.into());
+
+        self.gen_box(
+            ptr,
+            rebox_ty,
+            [|func: &mut Self| {
+                func.gen_local_get(res_idx);
+            }],
+        );
     }
 }
 
