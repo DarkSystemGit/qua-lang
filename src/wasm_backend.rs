@@ -212,10 +212,10 @@ impl WasmGenState {
     {
         let gen_values = gen_values.into_iter();
         let len: u32 = gen_values.len().try_into().unwrap();
-        let ptr = self.mem_store.alloc(box_ty.size() * len);
+        let ptr = self.mem_store.alloc_n(box_ty, len);
 
         // Make it a wrapper because of MemStore
-        self.cur_func.gen_box(ptr, box_ty, gen_values);
+        self.cur_func.gen_box(ptr.0, box_ty, gen_values);
     }
 
     /// Unboxes the pointer on top of the stack, runs `func()` to work with it,
@@ -233,9 +233,9 @@ impl WasmGenState {
         rebox_ty: wasm::BoxType,
         func: impl Fn(&mut wasm::Func),
     ) {
-        let ptr = self.mem_store.alloc(rebox_ty.size());
+        let ptr = self.mem_store.alloc(rebox_ty);
         // Make it a wrapper because of MemStore
-        self.cur_func.unwrap_box(ptr, unbox_ty, rebox_ty, func);
+        self.cur_func.unwrap_box(ptr.0, unbox_ty, rebox_ty, func);
     }
 }
 
@@ -253,11 +253,18 @@ impl MemStore {
     }
 
     /// # Parameters:
-    /// - `size`: The size in bytes.
-    pub fn alloc(&mut self, size: u32) -> MemPtr {
+    /// - `box_ty`: The type of the thing being allocated.
+    pub fn alloc(&mut self, box_ty: wasm::BoxType) -> (MemPtr, wasm::BoxType) {
+        self.alloc_n(box_ty, 1)
+    }
+
+    /// # Parameters:
+    /// - `box_ty`: The type of the thing being allocated.
+    /// - `n`: How many of the type are being allocated.
+    pub fn alloc_n(&mut self, box_ty: wasm::BoxType, n: u32) -> (MemPtr, wasm::BoxType) {
         let idx = MemPtr(self.next_idx as i32);
-        self.next_idx += size;
-        idx
+        self.next_idx += box_ty.size() * n;
+        (idx, box_ty)
     }
 }
 
