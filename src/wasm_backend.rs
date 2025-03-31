@@ -23,7 +23,7 @@ impl WasmGenState {
             ty: {
                 let ty = wasm::FuncType {
                     // TODO: funcs
-                    params: [wasm::ValType::F64].into_iter().collect(),
+                    params: [wasm::ValType::I32].into_iter().collect(),
                     results: WasmVec::new(),
                 };
                 module.ty_sec.insert(ty)
@@ -121,9 +121,6 @@ impl WasmGenState {
                 // Put arguments onto the stack
                 for arg in call.arguments {
                     self.gen_expr(arg);
-                    // Unbox for now so printing works nicely
-                    // TODO: funcs
-                    self.gen_unbox(MemBox::F64);
                 }
 
                 // TODO: funcs
@@ -134,14 +131,40 @@ impl WasmGenState {
             ast::Expr::Binary(binary_expr) => todo!(),
             ast::Expr::Unary(unary_expr) => todo!(),
             ast::Expr::Literal(literal) => match literal {
-                ast::Literal::Bool(_) => todo!(),
-                ast::Literal::Number(n) => {
-                    self.gen_box(MemBox::F64, |state| {
-                        state.cur_func.body.extend(wasm::binary::CONST_F64);
-                        state.cur_func.body.extend(n);
-                    });
+                ast::Literal::Bool(b) => self.gen_box(MemBox::I32, |state| {
+                    state.cur_func.body.extend(wasm::binary::CONST_I32);
+                    state.cur_func.body.extend(b);
+                }),
+                ast::Literal::Number(n) => self.gen_box(MemBox::F64, |state| {
+                    state.cur_func.body.extend(wasm::binary::CONST_F64);
+                    state.cur_func.body.extend(n);
+                }),
+                ast::Literal::Str(s) => {
+                    // Encode as a WasmVec of UTF-8 chars
+                    let len: u32 = s.bytes().len().try_into().unwrap();
+                    let len: Vec<u8> = len.into_bytes();
+                    let buf = {
+                        let mut buf = len;
+                        buf.extend(s.into_bytes());
+                        buf
+                    };
+                    let len = buf.len();
+
+                    for byte in buf {
+                        let byte = byte as i32;
+                        self.gen_box(MemBox::I32_8U, |state| {
+                            state.cur_func.body.extend(wasm::binary::CONST_I32);
+                            dbg!(byte, format!("0x {:02X?}", byte.into_bytes()));
+                            state.cur_func.body.extend(byte);
+                        });
+                    }
+
+                    // Generate enough DROPs to remain with only the first
+                    // address on the stack
+                    for _ in 0..len - 1 {
+                        self.cur_func.body.extend(wasm::binary::DROP);
+                    }
                 }
-                ast::Literal::Str(_) => todo!(),
                 ast::Literal::Nil => todo!(),
             },
             ast::Expr::Identifier(identifier) => todo!(),
@@ -164,7 +187,7 @@ impl WasmGenState {
         // Store that value in memory
         self.cur_func.body.extend(mem_box.instr_store());
         self.cur_func.body.extend([
-            0x01u8, // Align 1
+            0x00u8, // Align 2^0=1
             0x00,   // Offset 0
         ]);
 
@@ -179,7 +202,7 @@ impl WasmGenState {
     fn gen_unbox(&mut self, mem_box: MemBox) {
         self.cur_func.body.extend(mem_box.instr_load());
         self.cur_func.body.extend([
-            0x01u8, // Align 1
+            0x00u8, // Align 2^0=1
             0x00,   // Offset 0
         ]);
     }
@@ -197,14 +220,14 @@ impl MemStore {
     /// # Parameters:
     /// - `size`: The size in bytes.
     pub fn alloc(&mut self, size: u32) -> MemPtr {
-        let idx = MemPtr(self.next_idx);
+        let idx = MemPtr(self.next_idx as i32);
         self.next_idx += size;
         idx
     }
 }
 
 #[derive(Clone, Copy, Debug)]
-pub struct MemPtr(u32);
+pub struct MemPtr(i32);
 impl IntoBytes for MemPtr {
     fn into_bytes(self) -> Vec<u8> {
         self.0.into_bytes()
@@ -215,28 +238,41 @@ impl IntoBytes for MemPtr {
 #[derive(Clone, Copy, Debug)]
 enum MemBox {
     I32,
+    I64,
     F64,
+
+    I32_8U,
+    I32_16U,
 }
 
 impl MemBox {
     pub const fn size(self) -> u32 {
         match self {
             MemBox::I32 => 32 / 8,
+            MemBox::I64 => 64 / 8,
             MemBox::F64 => 64 / 8,
+            MemBox::I32_8U => 8 / 8,
+            MemBox::I32_16U => 16 / 8,
         }
     }
 
     pub const fn instr_store(self) -> impl IntoBytes {
         match self {
             MemBox::I32 => wasm::binary::MEM_I32_STORE,
+            MemBox::I64 => wasm::binary::MEM_I64_STORE,
             MemBox::F64 => wasm::binary::MEM_F64_STORE,
+            MemBox::I32_8U => wasm::binary::MEM_I32_STORE_8,
+            MemBox::I32_16U => wasm::binary::MEM_I32_STORE_16,
         }
     }
 
     pub const fn instr_load(self) -> impl IntoBytes {
         match self {
             MemBox::I32 => wasm::binary::MEM_I32_LOAD,
+            MemBox::I64 => wasm::binary::MEM_I64_LOAD,
             MemBox::F64 => wasm::binary::MEM_F64_LOAD,
+            MemBox::I32_8U => wasm::binary::MEM_I32_LOAD_8U,
+            MemBox::I32_16U => wasm::binary::MEM_I32_LOAD_16U,
         }
     }
 }
@@ -633,8 +669,9 @@ mod wasm {
         pub const TY_FUNC: u8 = 0x60;
 
         // Control instructions
-        pub const CALL: u8 = 0x10;
         pub const END: u8 = 0x0B;
+        pub const CALL: u8 = 0x10;
+        pub const DROP: u8 = 0x1A;
 
         // Variable instructions
         pub const LOCAL_GET: u8 = 0x20;
@@ -644,12 +681,22 @@ mod wasm {
         // Memory instructions
         pub const MEM_I32_LOAD: u8 = 0x28;
         pub const MEM_I32_STORE: u8 = 0x36;
+        pub const MEM_I64_LOAD: u8 = 0x29;
+        pub const MEM_I64_STORE: u8 = 0x37;
         pub const MEM_F64_LOAD: u8 = 0x2B;
         pub const MEM_F64_STORE: u8 = 0x39;
+        pub const MEM_I32_LOAD_8U: u8 = 0x2D;
+        pub const MEM_I32_STORE_8: u8 = 0x3A;
+        pub const MEM_I32_LOAD_16U: u8 = 0x2F;
+        pub const MEM_I32_STORE_16: u8 = 0x3B;
 
         // Numeric
         pub const CONST_I32: u8 = 0x41;
+        pub const CONST_I64: u8 = 0x42;
+        pub const CONST_F32: u8 = 0x43;
         pub const CONST_F64: u8 = 0x44;
+
+        pub const SUB_I32: u8 = 0x6B;
 
         /// Turn a section into bytecode with a proper header.
         ///
@@ -772,6 +819,14 @@ mod wasm {
             }
         }
 
+        impl IntoBytes for i32 {
+            fn into_bytes(self) -> Vec<u8> {
+                let mut buf = Vec::new();
+                leb128::write::signed(&mut buf, self.into()).unwrap();
+                buf
+            }
+        }
+
         impl IntoBytes for u8 {
             fn into_bytes(self) -> Vec<u8> {
                 vec![self]
@@ -784,9 +839,21 @@ mod wasm {
             }
         }
 
+        impl IntoBytes for bool {
+            fn into_bytes(self) -> Vec<u8> {
+                vec![self as u8]
+            }
+        }
+
         impl<const N: usize, T: IntoBytes> IntoBytes for [T; N] {
             fn into_bytes(self) -> Vec<u8> {
                 self.into_iter().flat_map(|e| e.into_bytes()).collect()
+            }
+        }
+
+        impl<T: IntoBytes + Copy> IntoBytes for &[T] {
+            fn into_bytes(self) -> Vec<u8> {
+                self.iter().flat_map(|e| e.into_bytes()).collect()
             }
         }
     }
