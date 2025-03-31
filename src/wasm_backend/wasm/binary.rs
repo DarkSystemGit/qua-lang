@@ -62,7 +62,13 @@ pub const CONST_I64: u8 = 0x42;
 pub const CONST_F32: u8 = 0x43;
 pub const CONST_F64: u8 = 0x44;
 
+pub const ADD_I32: u8 = 0x6A;
 pub const SUB_I32: u8 = 0x6B;
+pub const MUL_I32: u8 = 0x6C;
+pub const DIV_I32: u8 = 0x6D;
+pub const XOR_I32: u8 = 0x73;
+
+pub const NEG_F64: u8 = 0x9A;
 
 /// Turn a section into bytecode with a proper header.
 ///
