@@ -144,7 +144,7 @@ impl WasmGenState {
             ast::Expr::Unary(unary_expr) => todo!(),
             ast::Expr::Literal(literal) => match literal {
                 ast::Literal::Bool(b) => self.gen_box(
-                    MemBox::I32,
+                    MemBox::I32_8U,
                     [|state: &mut Self| {
                         state.cur_func.body.extend(wasm::binary::CONST_I32);
                         state.cur_func.body.extend(b);
