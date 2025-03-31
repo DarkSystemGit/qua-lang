@@ -142,8 +142,8 @@ impl WasmGenState {
                 self.gen_expr(unary_expr.rhs);
                 match unary_expr.op {
                     ast::UnaryOp::Not => self.unwrap_box(
-                        MemBox::I32_8U,
-                        MemBox::I32_8U,
+                        BoxType::Bool,
+                        BoxType::Bool,
                         |state| 
                             // Use XOR 0x1 as NOT
                             // 0x0 xor 0x1 = 0x1
@@ -151,22 +151,22 @@ impl WasmGenState {
                             state.cur_func.body.extend([wasm::binary::CONST_I32, 0x1, wasm::binary::XOR_I32])
                     ),
                     ast::UnaryOp::Negate => self.unwrap_box(
-                        MemBox::F64,
-                        MemBox::F64,
+                        BoxType::Num,
+                        BoxType::Num,
                         |state| state.cur_func.body.extend(wasm::binary::NEG_F64)
                     ),
                 }
             }
             ast::Expr::Literal(literal) => match literal {
                 ast::Literal::Bool(b) => self.gen_box(
-                    MemBox::I32_8U,
+                    BoxType::Bool,
                     [|state: &mut Self| {
                         state.cur_func.body.extend(wasm::binary::CONST_I32);
                         state.cur_func.body.extend(b);
                     }],
                 ),
                 ast::Literal::Number(n) => self.gen_box(
-                    MemBox::F64,
+                    BoxType::Num,
                     [|state: &mut Self| {
                         state.cur_func.body.extend(wasm::binary::CONST_F64);
                         state.cur_func.body.extend(n);
@@ -183,7 +183,7 @@ impl WasmGenState {
                     };
 
                     self.gen_box(
-                        MemBox::I32_8U,
+                        BoxType::Byte,
                         buf.into_iter().map(|byte| {
                             // Make sure it gets encoded w/ LEB128 and not as an opcode
                             let byte = byte as i32;
@@ -223,7 +223,7 @@ impl WasmGenState {
     /// `[T] -> [I32]`
     fn gen_box<T: Fn(&mut WasmGenState), I: IntoIterator<Item = T>>(
         &mut self,
-        mem_box: MemBox,
+        box_ty: BoxType,
         gen_values: I,
         // gen_values: &[impl Fn(&mut WasmGenState)],
     ) where
@@ -232,7 +232,7 @@ impl WasmGenState {
         let gen_values = gen_values.into_iter();
         let len: u32 = gen_values.len().try_into().unwrap();
 
-        let ptr = self.mem_store.alloc(mem_box.size() * len);
+        let ptr = self.mem_store.alloc(box_ty.size() * len);
         let mut offset = 0;
 
         for gen_value in gen_values {
@@ -244,14 +244,14 @@ impl WasmGenState {
             gen_value(self);
 
             // Store that value in memory
-            self.cur_func.body.extend(mem_box.instr_store());
+            self.cur_func.body.extend(box_ty.instr_store());
             self.cur_func.body.extend([
                 0x00u8, // Align 2^0=1
                 0x00,   // Offset 0
             ]);
 
             // Increase offset
-            offset += mem_box.size() as i32;
+            offset += box_ty.size() as i32;
         }
 
         // Return a pointer to the memory location
@@ -262,8 +262,8 @@ impl WasmGenState {
     /// Unboxes the pointer on top of the stack and returns the value.
     ///
     /// `[I32] -> [T]`
-    fn gen_unbox(&mut self, mem_box: MemBox) {
-        self.cur_func.body.extend(mem_box.instr_load());
+    fn gen_unbox(&mut self, box_ty: BoxType) {
+        self.cur_func.body.extend(box_ty.instr_load());
         self.cur_func.body.extend([
             0x00u8, // Align 2^0=1
             0x00,   // Offset 0
@@ -281,17 +281,17 @@ impl WasmGenState {
     /// - `func`: The function to run w/ the unboxed value. Must be `[Unbox] -> [Rebox]`.
     fn unwrap_box(
         &mut self,
-        mem_unbox: MemBox,
-        mem_rebox: MemBox,
+        unbox_ty: BoxType,
+        rebox_ty: BoxType,
         func: impl Fn(&mut WasmGenState),
     ) {
-        self.gen_unbox(mem_unbox);
+        self.gen_unbox(unbox_ty);
 
         func(self);
-        let res_idx = self.gen_local_set(mem_rebox.into());
+        let res_idx = self.gen_local_set(rebox_ty.into());
 
         self.gen_box(
-            mem_rebox,
+            rebox_ty,
             [|state: &mut Self| {
                 state.gen_local_get(res_idx);
             }],
@@ -337,56 +337,45 @@ impl IntoBytes for MemPtr {
 
 /// The type of value to store in memory.
 #[derive(Clone, Copy, Debug)]
-enum MemBox {
-    I32,
-    I64,
-    F64,
-
-    I32_8U,
-    I32_16U,
+enum BoxType {
+    Num,
+    Bool,
+    Byte,
 }
 
-impl MemBox {
+impl BoxType {
     pub const fn size(self) -> u32 {
         match self {
-            MemBox::I32 => 32 / 8,
-            MemBox::I64 => 64 / 8,
-            MemBox::F64 => 64 / 8,
-            MemBox::I32_8U => 8 / 8,
-            MemBox::I32_16U => 16 / 8,
+            BoxType::Num => 64 / 8,
+            BoxType::Bool => 8 / 8,
+            BoxType::Byte => 8 / 8,
         }
     }
 
     pub const fn instr_store(self) -> impl IntoBytes {
         match self {
-            MemBox::I32 => wasm::binary::MEM_I32_STORE,
-            MemBox::I64 => wasm::binary::MEM_I64_STORE,
-            MemBox::F64 => wasm::binary::MEM_F64_STORE,
-            MemBox::I32_8U => wasm::binary::MEM_I32_STORE_8,
-            MemBox::I32_16U => wasm::binary::MEM_I32_STORE_16,
+            BoxType::Num => wasm::binary::MEM_F64_STORE,
+            BoxType::Bool => wasm::binary::MEM_I32_STORE_8,
+            BoxType::Byte => wasm::binary::MEM_I32_STORE_8,
         }
     }
 
     pub const fn instr_load(self) -> impl IntoBytes {
         match self {
-            MemBox::I32 => wasm::binary::MEM_I32_LOAD,
-            MemBox::I64 => wasm::binary::MEM_I64_LOAD,
-            MemBox::F64 => wasm::binary::MEM_F64_LOAD,
-            MemBox::I32_8U => wasm::binary::MEM_I32_LOAD_8U,
-            MemBox::I32_16U => wasm::binary::MEM_I32_LOAD_16U,
+            BoxType::Num => wasm::binary::MEM_F64_LOAD,
+            BoxType::Bool => wasm::binary::MEM_I32_LOAD_8U,
+            BoxType::Byte => wasm::binary::MEM_I32_LOAD_8U,
         }
     }
 }
 
-impl From<MemBox> for wasm::ValType {
-    fn from(value: MemBox) -> Self {
+impl From<BoxType> for wasm::ValType {
+    fn from(value: BoxType) -> Self {
         use wasm::ValType;
         match value {
-            MemBox::I32 => ValType::I32,
-            MemBox::I64 => ValType::I64,
-            MemBox::F64 => ValType::F64,
-            MemBox::I32_8U => ValType::I32,
-            MemBox::I32_16U => ValType::I32,
+            BoxType::Num => ValType::F64,
+            BoxType::Bool => ValType::I32,
+            BoxType::Byte => ValType::I32,
         }
     }
 }
