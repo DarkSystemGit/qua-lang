@@ -140,32 +140,32 @@ impl WasmGenState {
             ast::Expr::Unary(unary_expr) => {
                 self.gen_expr(unary_expr.rhs);
                 match unary_expr.op {
-                    ast::UnaryOp::Not => self.unwrap_box(
+                    ast::UnaryOp::Not => self.cur_func.unwrap_box(
                         wasm::BoxType::Bool,
-                        wasm::BoxType::Bool,
+                        self.mem_store.alloc(wasm::BoxType::Bool),
                         |func: &mut wasm::Func| 
                             // Use XOR 0x1 as NOT
                             // 0x0 xor 0x1 = 0x1
                             // 0x1 xor 0x1 = 0x0
                             func.body.extend([wasm::binary::CONST_I32, 0x1, wasm::binary::XOR_I32])
                     ),
-                    ast::UnaryOp::Negate => self.unwrap_box(
+                    ast::UnaryOp::Negate => self.cur_func.unwrap_box(
                         wasm::BoxType::Num,
-                        wasm::BoxType::Num,
+                        self.mem_store.alloc(wasm::BoxType::Num),
                         |func: &mut wasm::Func| func.body.extend(wasm::binary::NEG_F64)
                     ),
                 }
             }
             ast::Expr::Literal(literal) => match literal {
-                ast::Literal::Bool(b) => self.gen_box(
-                    wasm::BoxType::Bool,
+                ast::Literal::Bool(b) => self.cur_func.gen_box(
+                    self.mem_store.alloc(wasm::BoxType::Bool),
                     [|func: &mut wasm::Func| {
                         func.body.extend(wasm::binary::CONST_I32);
                         func.body.extend(b);
                     }],
                 ),
-                ast::Literal::Number(n) => self.gen_box(
-                    wasm::BoxType::Num,
+                ast::Literal::Number(n) => self.cur_func.gen_box(
+                    self.mem_store.alloc(wasm::BoxType::Num),
                     [|func: &mut wasm::Func| {
                         func.body.extend(wasm::binary::CONST_F64);
                         func.body.extend(n);
@@ -181,8 +181,8 @@ impl WasmGenState {
                         buf
                     };
 
-                    self.gen_box(
-                        wasm::BoxType::Byte,
+                    self.cur_func.gen_box(
+                        self.mem_store.alloc(wasm::BoxType::Byte),
                         buf.into_iter().map(|byte| {
                             // Make sure it gets encoded w/ LEB128 and not as an opcode
                             let byte = byte as i32;
@@ -197,45 +197,6 @@ impl WasmGenState {
             },
             ast::Expr::Identifier(identifier) => todo!(),
         }
-    }
-
-    /// Boxes the top item on the stack and returns a pointer to it.
-    ///
-    /// `[T] -> [I32]`
-    fn gen_box<T: FnOnce(&mut wasm::Func), I: IntoIterator<Item = T>>(
-        &mut self,
-        box_ty: wasm::BoxType,
-        gen_values: I,
-        // gen_values: &[impl Fn(&mut WasmGenState)],
-    ) where
-        I::IntoIter: ExactSizeIterator,
-    {
-        let gen_values = gen_values.into_iter();
-        let len: u32 = gen_values.len().try_into().unwrap();
-        let ptr = self.mem_store.alloc_n(box_ty, len);
-
-        // Make it a wrapper because of MemStore
-        self.cur_func.gen_box(ptr.0, box_ty, gen_values);
-    }
-
-    /// Unboxes the pointer on top of the stack, runs `func()` to work with it,
-    /// and then reboxes the top of the stack.
-    ///
-    /// `[I32] -> [I32]`
-    ///
-    /// # Parameters
-    /// - `mem_unbox`: What to unbox into before `func()` is run.
-    /// - `mem_rebox`: What to rebox into after `func()` is run.
-    /// - `func`: The function to run w/ the unboxed value. Must be `[Unbox] -> [Rebox]`.
-    fn unwrap_box(
-        &mut self,
-        unbox_ty: wasm::BoxType,
-        rebox_ty: wasm::BoxType,
-        func: impl Fn(&mut wasm::Func),
-    ) {
-        let ptr = self.mem_store.alloc(rebox_ty);
-        // Make it a wrapper because of MemStore
-        self.cur_func.unwrap_box(ptr.0, unbox_ty, rebox_ty, func);
     }
 }
 

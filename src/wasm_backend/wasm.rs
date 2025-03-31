@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use binary::{IntoBytes, WasmVec};
 
+use super::MemPtr;
+
 pub mod binary;
 
 #[derive(Default)]
@@ -360,18 +362,13 @@ impl Func {
     /// `[T] -> [I32]`
     pub fn gen_box<T: FnOnce(&mut Self), I: IntoIterator<Item = T>>(
         &mut self,
-        ptr: super::MemPtr,
-        box_ty: BoxType,
+        (ptr, box_ty): (MemPtr, BoxType),
         gen_values: I,
         // gen_values: &[impl Fn(&mut WasmGenState)],
     ) where
         I::IntoIter: ExactSizeIterator,
     {
-        let gen_values = gen_values.into_iter();
-        let len: u32 = gen_values.len().try_into().unwrap();
-
         let mut offset = 0;
-
         for gen_value in gen_values {
             // Write the memory location
             self.body.extend(binary::CONST_I32);
@@ -418,9 +415,8 @@ impl Func {
     /// - `func`: The function to run w/ the unboxed value. Must be `[Unbox] -> [Rebox]`.
     pub fn unwrap_box(
         &mut self,
-        ptr: super::MemPtr,
         unbox_ty: BoxType,
-        rebox_ty: BoxType,
+        (rebox_ptr, rebox_ty): (MemPtr, BoxType),
         func: impl FnOnce(&mut Self),
     ) {
         self.gen_unbox(unbox_ty);
@@ -429,8 +425,7 @@ impl Func {
         let res_idx = self.gen_local_set(rebox_ty.into());
 
         self.gen_box(
-            ptr,
-            rebox_ty,
+            (rebox_ptr, rebox_ty),
             [|func: &mut Self| {
                 func.gen_local_get(res_idx);
             }],
