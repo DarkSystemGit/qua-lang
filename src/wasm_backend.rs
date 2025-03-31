@@ -90,10 +90,7 @@ impl WasmGenState {
         match binding.metadata {
             ast::BindingMetadata::Var => {
                 self.gen_expr(binding.value);
-
-                let idx = self.cur_func.insert_local(wasm::ValType::I32);
-                self.cur_func.body.extend(wasm::binary::LOCAL_SET);
-                self.cur_func.body.extend(idx);
+                self.gen_local_set(wasm::ValType::I32);
             }
             ast::BindingMetadata::Func {
                 arguments,
@@ -183,6 +180,24 @@ impl WasmGenState {
             },
             ast::Expr::Identifier(identifier) => todo!(),
         }
+    }
+
+    /// Places the value on the top of the stack into a new local.
+    ///
+    /// `[T] -> []`
+    fn gen_local_set(&mut self, ty: wasm::ValType) -> wasm::LocalIdx {
+        let idx = self.cur_func.insert_local(ty);
+        self.cur_func.body.extend(wasm::binary::LOCAL_SET);
+        self.cur_func.body.extend(idx);
+        idx
+    }
+
+    /// Reads from a local and places it on the stack.
+    ///
+    /// `[] -> [T]`
+    fn gen_local_get(&mut self, idx: wasm::LocalIdx) {
+        self.cur_func.body.extend(wasm::binary::LOCAL_GET);
+        self.cur_func.body.extend(idx);
     }
 
     /// Boxes the top item on the stack and returns a pointer to it.
