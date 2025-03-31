@@ -25,7 +25,7 @@ impl WasmGenState {
             ty: {
                 let ty = wasm::FuncType {
                     // TODO: funcs
-                    params: [wasm::ValType::I32].into_iter().collect(),
+                    params: [MEM_PTR_TY].into_iter().collect(),
                     results: WasmVec::new(),
                 };
                 module.ty_sec.insert(ty)
@@ -90,15 +90,14 @@ impl WasmGenState {
         match binding.metadata {
             ast::BindingMetadata::Var => {
                 self.gen_expr(binding.value);
-                self.gen_local_set(wasm::ValType::I32);
+                self.gen_local_set(MEM_PTR_TY);
             }
             ast::BindingMetadata::Func {
                 arguments,
                 upvalues,
             } => {
-                // Everything is boxed (ie an I32)
-                let param_tys = arguments.iter().map(|_| wasm::ValType::I32).collect();
-                let result_ty = wasm::ValType::I32;
+                let param_tys = arguments.iter().map(|_| MEM_PTR_TY).collect();
+                let result_ty = MEM_PTR_TY;
                 let ty = wasm::FuncType {
                     params: param_tys,
                     // Functions can only have 1 return type as of now
@@ -320,6 +319,9 @@ impl MemStore {
         idx
     }
 }
+
+/// The runtime WASM type of a pointer to memory.
+const MEM_PTR_TY: wasm::ValType = wasm::ValType::I32;
 
 #[derive(Clone, Copy, Debug)]
 pub struct MemPtr(i32);
