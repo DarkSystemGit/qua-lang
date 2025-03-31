@@ -138,7 +138,25 @@ impl WasmGenState {
             }
             ast::Expr::If(if_expr) => todo!(),
             ast::Expr::Binary(binary_expr) => todo!(),
-            ast::Expr::Unary(unary_expr) => todo!(),
+            ast::Expr::Unary(unary_expr) => {
+                self.gen_expr(unary_expr.rhs);
+                match unary_expr.op {
+                    ast::UnaryOp::Not => self.unwrap_box(
+                        MemBox::I32_8U,
+                        MemBox::I32_8U,
+                        |state| 
+                            // Use XOR 0x1 as NOT
+                            // 0x0 xor 0x1 = 0x1
+                            // 0x1 xor 0x1 = 0x0
+                            state.cur_func.body.extend([wasm::binary::CONST_I32, 0x1, wasm::binary::XOR_I32])
+                    ),
+                    ast::UnaryOp::Negate => self.unwrap_box(
+                        MemBox::F64,
+                        MemBox::F64,
+                        |state| state.cur_func.body.extend(wasm::binary::NEG_F64)
+                    ),
+                }
+            }
             ast::Expr::Literal(literal) => match literal {
                 ast::Literal::Bool(b) => self.gen_box(
                     MemBox::I32_8U,
