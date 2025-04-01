@@ -82,7 +82,12 @@ impl WasmGenState {
     fn gen_stmt(&mut self, stmt: ast::Stmt) {
         match stmt {
             ast::Stmt::Let(binding) => self.gen_binding(binding),
-            ast::Stmt::Expr(expr) => self.gen_expr(expr),
+            ast::Stmt::Expr(expr) => {
+                self.gen_expr(expr);
+
+                // TODO: *all* expressions must generate some return value,
+                //       even if it's nil. Therefore, they must all be dropped.
+            }
         }
     }
 
@@ -115,6 +120,7 @@ impl WasmGenState {
     }
 
     fn gen_expr(&mut self, expr: ast::Expr) {
+        // TODO: all expressions must return some value, even if it is nil.
         match expr {
             ast::Expr::Block(block) => {
                 for stmt in block.stmts {
