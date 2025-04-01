@@ -137,36 +137,40 @@ impl WasmGenState {
             }
             ast::Expr::If(if_expr) => todo!(),
             ast::Expr::Binary(binary_expr) => {
-                self.gen_expr(binary_expr.lhs);
-                match binary_expr.op {
-                    ast::BinaryOp::Or => todo!(),
-                    ast::BinaryOp::And => todo!(),
-                    ast::BinaryOp::NotEq => todo!(),
-                    ast::BinaryOp::Eq => todo!(),
-                    ast::BinaryOp::Greater => todo!(),
-                    ast::BinaryOp::GreaterEq => todo!(),
-                    ast::BinaryOp::Less => todo!(),
-                    ast::BinaryOp::LessEq => todo!(),
-                    ast::BinaryOp::Subtract => todo!(),
-                    ast::BinaryOp::Add => {
-                        self.gen_expr(binary_expr.rhs);
+                let (ty, instrs) = {
+                    use wasm::binary::{
+                        ADD_F64, AND_I32, DIV_F64, MUL_F64, NE_I32, OR_I32, SUB_F64,
+                    };
+                    use wasm::BoxType::{Bool, Num};
 
-                        let rhs_idx = self.cur_func.gen_local_set(wasm::ValType::I32);
-
-                        self.cur_func.unwrap_box(
-                            wasm::BoxType::Num,
-                            self.mem_store.alloc(wasm::BoxType::Num),
-                            |func| {
-                                func.gen_local_get(rhs_idx);
-                                func.gen_unbox(wasm::BoxType::Num);
-
-                                func.body.extend(wasm::binary::ADD_F64);
-                            },
-                        );
+                    match binary_expr.op {
+                        ast::BinaryOp::Or => (Bool, OR_I32),
+                        ast::BinaryOp::And => (Bool, AND_I32),
+                        ast::BinaryOp::NotEq => (Num, NE_I32),
+                        ast::BinaryOp::Eq => (Num, NE_I32),
+                        ast::BinaryOp::Greater => todo!(),
+                        ast::BinaryOp::GreaterEq => todo!(),
+                        ast::BinaryOp::Less => todo!(),
+                        ast::BinaryOp::LessEq => todo!(),
+                        ast::BinaryOp::Subtract => (Num, SUB_F64),
+                        ast::BinaryOp::Add => (Num, ADD_F64),
+                        ast::BinaryOp::Divide => (Num, DIV_F64),
+                        ast::BinaryOp::Multiply => (Num, MUL_F64),
                     }
-                    ast::BinaryOp::Divide => todo!(),
-                    ast::BinaryOp::Multiply => todo!(),
-                }
+                };
+
+                self.gen_expr(binary_expr.rhs);
+                let rhs_idx = self.cur_func.gen_local_set(MEM_PTR_TY);
+
+                self.gen_expr(binary_expr.lhs);
+
+                self.cur_func
+                    .unwrap_box(ty, self.mem_store.alloc(ty), |func| {
+                        func.gen_local_get(rhs_idx);
+                        func.gen_unbox(ty);
+
+                        func.body.extend(instrs)
+                    });
             }
             ast::Expr::Unary(unary_expr) => {
                 self.gen_expr(unary_expr.rhs);

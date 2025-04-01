@@ -82,6 +82,10 @@ pub const DIV_F64: u8 = 0xA3;
 pub const EQ_I32: u8 = 0x46;
 pub const NE_I32: u8 = 0x47;
 
+// Boolean
+pub const AND_I32: u8 = 0x71;
+pub const OR_I32: u8 = 0x72;
+
 /// Turn a section into bytecode with a proper header.
 ///
 /// See <https://webassembly.github.io/spec/core/binary/modules.html#sections>.
