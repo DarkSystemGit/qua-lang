@@ -40,6 +40,7 @@ pub const TY_FUNC: u8 = 0x60;
 // Control instructions
 pub const TRAP: u8 = 0x00;
 pub const IF: u8 = 0x04;
+pub const ELSE: u8 = 0x05;
 pub const END: u8 = 0x0B;
 pub const CALL: u8 = 0x10;
 pub const DROP: u8 = 0x1A;
@@ -81,6 +82,9 @@ pub const DIV_F64: u8 = 0xA3;
 
 pub const EQ_I32: u8 = 0x46;
 pub const NE_I32: u8 = 0x47;
+
+pub const EQ_F64: u8 = 0x61;
+pub const NE_F64: u8 = 0x62;
 
 // Boolean
 pub const AND_I32: u8 = 0x71;
