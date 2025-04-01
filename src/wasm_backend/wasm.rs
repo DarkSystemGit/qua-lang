@@ -362,6 +362,16 @@ impl Func {
         idx
     }
 
+    /// Places the value on the top of the stack in a new local and returns it.
+    ///
+    /// `[T] -> [T]`
+    pub fn gen_local_tee(&mut self, ty: ValType) -> LocalIdx {
+        let idx = self.insert_local(ty);
+        self.body.extend(binary::LOCAL_TEE);
+        self.body.extend(idx);
+        idx
+    }
+
     /// Reads from a local and places it on the stack.
     ///
     /// `[] -> [T]`
@@ -429,9 +439,7 @@ impl Func {
     /// `[I32] -> [T]`
     pub fn gen_unbox(&mut self, box_ty: BoxType) {
         // Save address to local
-        let ptr_idx = self.insert_local(MEM_PTR_TY);
-        self.body.extend(binary::LOCAL_TEE);
-        self.body.extend(ptr_idx);
+        let ptr_idx = self.gen_local_tee(MEM_PTR_TY);
 
         self.body.extend(binary::MEM_I32_LOAD_8U);
         self.body.extend([
@@ -447,8 +455,7 @@ impl Func {
             .extend([binary::IF, binary::TY_NEVER, binary::TRAP, binary::END]);
 
         // Get the address
-        self.body.extend(binary::LOCAL_GET);
-        self.body.extend(ptr_idx);
+        self.gen_local_get(ptr_idx);
         // Add one to ignore the tag byte
         self.body.extend([binary::CONST_I32, 0x01, binary::ADD_I32]);
         // Actually load the data

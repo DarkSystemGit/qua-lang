@@ -151,16 +151,13 @@ impl WasmGenState {
                     ast::BinaryOp::Add => {
                         self.gen_expr(binary_expr.rhs);
 
-                        let rhs_idx = self.cur_func.insert_local(wasm::ValType::I32);
-                        self.cur_func.body.extend(wasm::binary::LOCAL_SET);
-                        self.cur_func.body.extend(rhs_idx);
+                        let rhs_idx = self.cur_func.gen_local_set(wasm::ValType::I32);
 
                         self.cur_func.unwrap_box(
                             wasm::BoxType::Num,
                             self.mem_store.alloc(wasm::BoxType::Num),
                             |func| {
-                                func.body.extend(wasm::binary::LOCAL_GET);
-                                func.body.extend(rhs_idx);
+                                func.gen_local_get(rhs_idx);
                                 func.gen_unbox(wasm::BoxType::Num);
 
                                 func.body.extend(wasm::binary::ADD_F64);
