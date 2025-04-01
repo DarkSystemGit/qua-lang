@@ -136,7 +136,41 @@ impl WasmGenState {
                 self.cur_func.body.extend(0u32);
             }
             ast::Expr::If(if_expr) => todo!(),
-            ast::Expr::Binary(binary_expr) => todo!(),
+            ast::Expr::Binary(binary_expr) => {
+                self.gen_expr(binary_expr.lhs);
+                match binary_expr.op {
+                    ast::BinaryOp::Or => todo!(),
+                    ast::BinaryOp::And => todo!(),
+                    ast::BinaryOp::NotEq => todo!(),
+                    ast::BinaryOp::Eq => todo!(),
+                    ast::BinaryOp::Greater => todo!(),
+                    ast::BinaryOp::GreaterEq => todo!(),
+                    ast::BinaryOp::Less => todo!(),
+                    ast::BinaryOp::LessEq => todo!(),
+                    ast::BinaryOp::Subtract => todo!(),
+                    ast::BinaryOp::Add => {
+                        self.gen_expr(binary_expr.rhs);
+
+                        let rhs_idx = self.cur_func.insert_local(wasm::ValType::I32);
+                        self.cur_func.body.extend(wasm::binary::LOCAL_SET);
+                        self.cur_func.body.extend(rhs_idx);
+
+                        self.cur_func.unwrap_box(
+                            wasm::BoxType::Num,
+                            self.mem_store.alloc(wasm::BoxType::Num),
+                            |func| {
+                                func.body.extend(wasm::binary::LOCAL_GET);
+                                func.body.extend(rhs_idx);
+                                func.gen_unbox(wasm::BoxType::Num);
+
+                                func.body.extend(wasm::binary::ADD_F64);
+                            },
+                        );
+                    }
+                    ast::BinaryOp::Divide => todo!(),
+                    ast::BinaryOp::Multiply => todo!(),
+                }
+            }
             ast::Expr::Unary(unary_expr) => {
                 self.gen_expr(unary_expr.rhs);
                 match unary_expr.op {
