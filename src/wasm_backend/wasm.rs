@@ -362,30 +362,26 @@ impl Func {
     /// `[T] -> [I32]`
     pub fn gen_box<T: FnOnce(&mut Self), I: IntoIterator<Item = T>>(
         &mut self,
-        (ptr, box_ty): (MemPtr, BoxType),
+        ptr: MemPtr,
         gen_values: I,
         // gen_values: &[impl Fn(&mut WasmGenState)],
     ) where
         I::IntoIter: ExactSizeIterator,
     {
-        let mut offset = 0;
-        for gen_value in gen_values {
+        for (i, gen_value) in gen_values.into_iter().enumerate() {
             // Write the memory location
             self.body.extend(binary::CONST_I32);
-            self.body.extend(ptr.offset(offset));
+            self.body.extend(ptr.offset(i as u32));
 
             // Generate the value to store
             gen_value(self);
 
             // Store that value in memory
-            self.body.extend(box_ty.instr_store());
+            self.body.extend(ptr.box_ty.instr_store());
             self.body.extend([
                 0x00u8, // Align 2^0=1
                 0x00,   // Offset 0
             ]);
-
-            // Increase offset
-            offset += box_ty.size() as i32;
         }
 
         // Return a pointer to the memory location
@@ -416,16 +412,16 @@ impl Func {
     pub fn unwrap_box(
         &mut self,
         unbox_ty: BoxType,
-        (rebox_ptr, rebox_ty): (MemPtr, BoxType),
+        rebox_ptr: MemPtr,
         func: impl FnOnce(&mut Self),
     ) {
         self.gen_unbox(unbox_ty);
 
         func(self);
-        let res_idx = self.gen_local_set(rebox_ty.into());
+        let res_idx = self.gen_local_set(rebox_ptr.box_ty.into());
 
         self.gen_box(
-            (rebox_ptr, rebox_ty),
+            rebox_ptr,
             [|func: &mut Self| {
                 func.gen_local_get(res_idx);
             }],

@@ -215,17 +215,21 @@ impl MemStore {
 
     /// # Parameters:
     /// - `box_ty`: The type of the thing being allocated.
-    pub fn alloc(&mut self, box_ty: wasm::BoxType) -> (MemPtr, wasm::BoxType) {
+    pub fn alloc(&mut self, box_ty: wasm::BoxType) -> MemPtr {
         self.alloc_n(box_ty, 1)
     }
 
     /// # Parameters:
     /// - `box_ty`: The type of the thing being allocated.
     /// - `n`: How many of the type are being allocated.
-    pub fn alloc_n(&mut self, box_ty: wasm::BoxType, n: u32) -> (MemPtr, wasm::BoxType) {
-        let idx = MemPtr(self.next_idx as i32);
+    pub fn alloc_n(&mut self, box_ty: wasm::BoxType, n: u32) -> MemPtr {
+        let ptr = MemPtr {
+            address: self.next_idx as i32,
+            box_ty,
+            n,
+        };
         self.next_idx += box_ty.size() * n;
-        (idx, box_ty)
+        ptr
     }
 }
 
@@ -233,16 +237,25 @@ impl MemStore {
 const MEM_PTR_TY: wasm::ValType = wasm::ValType::I32;
 
 #[derive(Clone, Copy, Debug)]
-pub struct MemPtr(i32);
-impl MemPtr {
-    fn offset(mut self, amount: i32) -> MemPtr {
-        self.0 += amount;
-        self
-    }
+pub struct MemPtr {
+    address: i32,
+    box_ty: wasm::BoxType,
+    n: u32,
 }
-impl IntoBytes for MemPtr {
-    fn into_bytes(self) -> Vec<u8> {
-        self.0.into_bytes()
+
+impl MemPtr {
+    /// # Panics
+    /// - `n` must be less than or equal to `self.n`.
+    fn offset(&self, n: u32) -> i32 {
+        assert!(n <= self.n);
+
+        let offset = (self.n * n) as i32;
+        self.address + offset
     }
 }
 
+impl IntoBytes for MemPtr {
+    fn into_bytes(self) -> Vec<u8> {
+        self.address.into_bytes()
+    }
+}
