@@ -74,6 +74,10 @@ pub const DIV_I32: u8 = 0x6D;
 pub const XOR_I32: u8 = 0x73;
 
 pub const NEG_F64: u8 = 0x9A;
+pub const ADD_F64: u8 = 0xA0;
+pub const SUB_F64: u8 = 0xA1;
+pub const MUL_F64: u8 = 0xA2;
+pub const DIV_F64: u8 = 0xA3;
 
 pub const EQ_I32: u8 = 0x46;
 pub const NE_I32: u8 = 0x47;
