@@ -131,6 +131,7 @@ impl IntoBytes for ValType {
 ///   to) contains a tag indicating the type of the data.
 #[derive(Clone, Copy, Debug)]
 pub enum BoxType {
+    Nil,
     Num,
     Bool,
     String,
@@ -139,6 +140,7 @@ pub enum BoxType {
 impl BoxType {
     pub const fn size(self) -> u32 {
         match self {
+            BoxType::Nil => 1,
             BoxType::Num => 64 / 8,
             BoxType::Bool => 8 / 8,
             // A string is stored as bytes
@@ -148,6 +150,7 @@ impl BoxType {
 
     pub const fn instr_store(self) -> impl IntoBytes {
         match self {
+            BoxType::Nil => binary::MEM_I32_STORE_8,
             BoxType::Num => binary::MEM_F64_STORE,
             BoxType::Bool => binary::MEM_I32_STORE_8,
             BoxType::String => binary::MEM_I32_STORE_8,
@@ -156,6 +159,7 @@ impl BoxType {
 
     pub const fn instr_load(self) -> impl IntoBytes {
         match self {
+            BoxType::Nil => binary::MEM_I32_LOAD_8U,
             BoxType::Num => binary::MEM_F64_LOAD,
             BoxType::Bool => binary::MEM_I32_LOAD_8U,
             BoxType::String => binary::MEM_I32_LOAD_8U,
@@ -164,9 +168,10 @@ impl BoxType {
 
     fn tag(&self) -> u8 {
         match self {
-            BoxType::Num => 0b000,
-            BoxType::Bool => 0b001,
-            BoxType::String => 0b010,
+            BoxType::Nil => 0b001,
+            BoxType::Num => 0b001,
+            BoxType::Bool => 0b010,
+            BoxType::String => 0b011,
         }
     }
 }
@@ -174,6 +179,7 @@ impl BoxType {
 impl From<BoxType> for ValType {
     fn from(value: BoxType) -> Self {
         match value {
+            BoxType::Nil => ValType::I32,
             BoxType::Num => ValType::F64,
             BoxType::Bool => ValType::I32,
             BoxType::String => ValType::I32,
