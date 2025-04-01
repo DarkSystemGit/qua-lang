@@ -135,7 +135,27 @@ impl WasmGenState {
                 self.cur_func.body.extend(wasm::binary::CALL);
                 self.cur_func.body.extend(0u32);
             }
-            ast::Expr::If(if_expr) => todo!(),
+            ast::Expr::If(if_expr) => {
+                self.gen_expr(if_expr.condition);
+                self.cur_func.gen_unbox(wasm::BoxType::Bool);
+
+                self.cur_func.body.extend(wasm::binary::IF);
+                // Always return a boxed ptr, even if it's nil
+                self.cur_func.body.extend(MEM_PTR_TY);
+                self.gen_expr(ast::Expr::Block(if_expr.then_block));
+
+                // Generate else block
+                if let Some(else_block) = if_expr.else_block {
+                    self.cur_func.body.extend(wasm::binary::ELSE);
+
+                    match else_block {
+                        ast::ElseBlock::ElseIf(if_expr) => self.gen_expr(ast::Expr::If(if_expr)),
+                        ast::ElseBlock::Else(block) => self.gen_expr(ast::Expr::Block(block)),
+                    }
+                }
+
+                self.cur_func.body.extend(wasm::binary::END);
+            }
             ast::Expr::Binary(binary_expr) => {
                 let (ty, instrs) = {
                     use wasm::binary::{
