@@ -18,6 +18,9 @@ pub const SEC_CODE: u8 = 0x0A;
 pub const SEC_DATA: u8 = 0x0B;
 pub const SEC_DATA_COUNT: u8 = 0x0C;
 
+// Never type
+pub const TY_NEVER: u8 = 0x40;
+
 // Number types
 pub const TY_I32: u8 = 0x7F;
 pub const TY_I64: u8 = 0x7E;
@@ -35,6 +38,8 @@ pub const TY_EXTERN_REF: u8 = 0x6F;
 pub const TY_FUNC: u8 = 0x60;
 
 // Control instructions
+pub const TRAP: u8 = 0x00;
+pub const IF: u8 = 0x04;
 pub const END: u8 = 0x0B;
 pub const CALL: u8 = 0x10;
 pub const DROP: u8 = 0x1A;
@@ -69,6 +74,9 @@ pub const DIV_I32: u8 = 0x6D;
 pub const XOR_I32: u8 = 0x73;
 
 pub const NEG_F64: u8 = 0x9A;
+
+pub const EQ_I32: u8 = 0x46;
+pub const NE_I32: u8 = 0x47;
 
 /// Turn a section into bytecode with a proper header.
 ///

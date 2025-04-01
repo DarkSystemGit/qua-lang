@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use binary::{IntoBytes, WasmVec};
 
-use super::MemPtr;
+use super::{MemPtr, MEM_PTR_TY};
 
 pub mod binary;
 
@@ -125,11 +125,15 @@ impl IntoBytes for ValType {
 }
 
 /// The type of value to store in memory.
+///
+/// # Binary Format
+/// - The 3 least significant bits of the first byte (the one that is pointed
+///   to) contains a tag indicating the type of the data.
 #[derive(Clone, Copy, Debug)]
 pub enum BoxType {
     Num,
     Bool,
-    Byte,
+    String,
 }
 
 impl BoxType {
@@ -137,7 +141,8 @@ impl BoxType {
         match self {
             BoxType::Num => 64 / 8,
             BoxType::Bool => 8 / 8,
-            BoxType::Byte => 8 / 8,
+            // A string is stored as bytes
+            BoxType::String => 8 / 8,
         }
     }
 
@@ -145,7 +150,7 @@ impl BoxType {
         match self {
             BoxType::Num => binary::MEM_F64_STORE,
             BoxType::Bool => binary::MEM_I32_STORE_8,
-            BoxType::Byte => binary::MEM_I32_STORE_8,
+            BoxType::String => binary::MEM_I32_STORE_8,
         }
     }
 
@@ -153,7 +158,15 @@ impl BoxType {
         match self {
             BoxType::Num => binary::MEM_F64_LOAD,
             BoxType::Bool => binary::MEM_I32_LOAD_8U,
-            BoxType::Byte => binary::MEM_I32_LOAD_8U,
+            BoxType::String => binary::MEM_I32_LOAD_8U,
+        }
+    }
+
+    fn tag(&self) -> u8 {
+        match self {
+            BoxType::Num => 0b000,
+            BoxType::Bool => 0b001,
+            BoxType::String => 0b010,
         }
     }
 }
@@ -163,7 +176,7 @@ impl From<BoxType> for ValType {
         match value {
             BoxType::Num => ValType::F64,
             BoxType::Bool => ValType::I32,
-            BoxType::Byte => ValType::I32,
+            BoxType::String => ValType::I32,
         }
     }
 }
@@ -368,10 +381,30 @@ impl Func {
     ) where
         I::IntoIter: ExactSizeIterator,
     {
-        for (i, gen_value) in gen_values.into_iter().enumerate() {
+        let mut i: u32 = 0;
+        if ptr.includes_tag_byte {
             // Write the memory location
             self.body.extend(binary::CONST_I32);
-            self.body.extend(ptr.offset(i as u32));
+            self.body.extend(ptr.offset(i));
+
+            // Write tag byte
+            self.body.extend(binary::CONST_I32);
+            self.body.extend(ptr.box_ty.tag());
+
+            // Store in memory
+            self.body.extend(binary::MEM_I32_STORE_8);
+            self.body.extend([
+                0x00u8, // Align 2^0=1
+                0x00,   // Offset 0
+            ]);
+
+            i += 1;
+        }
+
+        for gen_value in gen_values.into_iter() {
+            // Write the memory location
+            self.body.extend(binary::CONST_I32);
+            self.body.extend(ptr.offset(i));
 
             // Generate the value to store
             gen_value(self);
@@ -382,6 +415,8 @@ impl Func {
                 0x00u8, // Align 2^0=1
                 0x00,   // Offset 0
             ]);
+
+            i += 1;
         }
 
         // Return a pointer to the memory location
@@ -393,6 +428,30 @@ impl Func {
     ///
     /// `[I32] -> [T]`
     pub fn gen_unbox(&mut self, box_ty: BoxType) {
+        // Save address to local
+        let ptr_idx = self.insert_local(MEM_PTR_TY);
+        self.body.extend(binary::LOCAL_TEE);
+        self.body.extend(ptr_idx);
+
+        self.body.extend(binary::MEM_I32_LOAD_8U);
+        self.body.extend([
+            0x00u8, // Align 2^0=1
+            0x00,   // Offset 0
+        ]);
+
+        // Verify type
+        // Tag is on top of stack
+        self.body.extend([binary::CONST_I32, box_ty.tag()]);
+        self.body.extend(binary::NE_I32);
+        self.body
+            .extend([binary::IF, binary::TY_NEVER, binary::TRAP, binary::END]);
+
+        // Get the address
+        self.body.extend(binary::LOCAL_GET);
+        self.body.extend(ptr_idx);
+        // Add one to ignore the tag byte
+        self.body.extend([binary::CONST_I32, 0x01, binary::ADD_I32]);
+        // Actually load the data
         self.body.extend(box_ty.instr_load());
         self.body.extend([
             0x00u8, // Align 2^0=1

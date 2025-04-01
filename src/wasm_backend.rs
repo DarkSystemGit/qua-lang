@@ -182,7 +182,8 @@ impl WasmGenState {
                     };
 
                     self.cur_func.gen_box(
-                        self.mem_store.alloc(wasm::BoxType::Byte),
+                        self.mem_store
+                            .alloc_n(wasm::BoxType::String, buf.len() as u32),
                         buf.into_iter().map(|byte| {
                             // Make sure it gets encoded w/ LEB128 and not as an opcode
                             let byte = byte as i32;
@@ -223,12 +224,18 @@ impl MemStore {
     /// - `box_ty`: The type of the thing being allocated.
     /// - `n`: How many of the type are being allocated.
     pub fn alloc_n(&mut self, box_ty: wasm::BoxType, n: u32) -> MemPtr {
+        self.alloc_raw(box_ty, n, true)
+    }
+
+    pub fn alloc_raw(&mut self, box_ty: wasm::BoxType, n: u32, includes_tag_byte: bool) -> MemPtr {
         let ptr = MemPtr {
             address: self.next_idx as i32,
             box_ty,
             n,
+            includes_tag_byte,
         };
-        self.next_idx += box_ty.size() * n;
+        self.next_idx += ptr.size();
+
         ptr
     }
 }
@@ -241,6 +248,7 @@ pub struct MemPtr {
     address: i32,
     box_ty: wasm::BoxType,
     n: u32,
+    includes_tag_byte: bool,
 }
 
 impl MemPtr {
@@ -249,8 +257,12 @@ impl MemPtr {
     fn offset(&self, n: u32) -> i32 {
         assert!(n <= self.n);
 
-        let offset = (self.n * n) as i32;
+        let offset = n as i32;
         self.address + offset
+    }
+
+    fn size(&self) -> u32 {
+        self.box_ty.size() * self.n + if self.includes_tag_byte { 1 } else { 0 }
     }
 }
 
