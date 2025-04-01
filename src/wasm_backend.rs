@@ -143,16 +143,16 @@ impl WasmGenState {
                     ast::UnaryOp::Not => self.cur_func.unwrap_box(
                         wasm::BoxType::Bool,
                         self.mem_store.alloc(wasm::BoxType::Bool),
-                        |func: &mut wasm::Func| 
+                        |func: &mut wasm::Func|
                             // Use XOR 0x1 as NOT
                             // 0x0 xor 0x1 = 0x1
                             // 0x1 xor 0x1 = 0x0
-                            func.body.extend([wasm::binary::CONST_I32, 0x1, wasm::binary::XOR_I32])
+                            func.body.extend([wasm::binary::CONST_I32, 0x1, wasm::binary::XOR_I32]),
                     ),
                     ast::UnaryOp::Negate => self.cur_func.unwrap_box(
                         wasm::BoxType::Num,
                         self.mem_store.alloc(wasm::BoxType::Num),
-                        |func: &mut wasm::Func| func.body.extend(wasm::binary::NEG_F64)
+                        |func: &mut wasm::Func| func.body.extend(wasm::binary::NEG_F64),
                     ),
                 }
             }
