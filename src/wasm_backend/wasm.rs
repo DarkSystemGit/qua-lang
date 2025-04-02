@@ -168,7 +168,7 @@ impl BoxType {
 
     fn tag(&self) -> u8 {
         match self {
-            BoxType::Nil => 0b001,
+            BoxType::Nil => 0b000,
             BoxType::Num => 0b001,
             BoxType::Bool => 0b010,
             BoxType::String => 0b011,

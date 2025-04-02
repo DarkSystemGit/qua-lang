@@ -255,7 +255,10 @@ impl WasmGenState {
                         }),
                     );
                 }
-                ast::Literal::Nil => todo!(),
+                ast::Literal::Nil => self.cur_func.gen_box(
+                    self.mem_store.alloc(wasm::BoxType::Nil),
+                    [|func: &mut wasm::Func| func.body.extend([wasm::binary::CONST_I32, 0b0])],
+                ),
             },
             ast::Expr::Identifier(identifier) => todo!(),
         }
