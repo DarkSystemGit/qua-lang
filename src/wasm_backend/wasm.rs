@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use binary::{IntoBytes, WasmVec};
+use binary::{Expr, IntoBytes, WasmVec, SEC_TABLE};
 
 use crate::ast;
 
@@ -14,9 +14,11 @@ pub struct Module {
     // No imports section here b/c it's better to put imports inside the
     // appropriate section (eg funcs section) to make indexing easier.
     pub funcs: Functions,
+    pub table_sec: Option<TableSection>,
     pub mem_sec: MemorySection,
     pub export_sec: Option<ExportSection>,
     pub start_sec: Option<StartSection>,
+    pub elem_sec: Option<ElemSection>,
 }
 
 impl IntoBytes for Module {
@@ -552,6 +554,155 @@ pub struct LocalIdx(u32);
 impl IntoBytes for LocalIdx {
     fn into_bytes(self) -> Vec<u8> {
         self.0.into_bytes()
+    }
+}
+
+#[derive(Default)]
+pub struct TableSection {
+    tables: WasmVec<TableType>,
+}
+
+impl TableSection {
+    pub fn new() -> Self {
+        TableSection {
+            tables: WasmVec::new(),
+        }
+    }
+
+    pub fn insert(&mut self, table: TableType) -> TableIdx {
+        let idx = TableIdx(self.tables.size());
+        self.tables.extend([table]);
+        idx
+    }
+}
+
+impl IntoBytes for TableSection {
+    fn into_bytes(self) -> Vec<u8> {
+        binary::sec_bytes(binary::SEC_TABLE, self.tables)
+    }
+}
+
+#[derive(Debug)]
+pub struct TableIdx(u32);
+impl IntoBytes for TableIdx {
+    fn into_bytes(self) -> Vec<u8> {
+        self.0.into_bytes()
+    }
+}
+
+#[derive(Debug)]
+pub struct TableType {
+    pub limits: Limits,
+    pub ty: RefType,
+}
+
+impl IntoBytes for TableType {
+    fn into_bytes(self) -> Vec<u8> {
+        let mut buf = self.limits.into_bytes();
+        buf.extend(self.ty.into_bytes());
+        buf
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum RefType {
+    Func,
+    Extern,
+}
+
+impl IntoBytes for RefType {
+    fn into_bytes(self) -> Vec<u8> {
+        match self {
+            RefType::Func => vec![binary::TY_FUNC_REF],
+            RefType::Extern => vec![binary::TY_EXTERN_REF],
+        }
+    }
+}
+
+#[derive(Default)]
+pub struct ElemSection {
+    segments: WasmVec<Elem>,
+}
+
+impl ElemSection {
+    pub fn new() -> Self {
+        ElemSection {
+            segments: WasmVec::new(),
+        }
+    }
+    pub fn insert(&mut self, segment: Elem) {
+        self.segments.extend([segment]);
+    }
+}
+
+impl IntoBytes for ElemSection {
+    fn into_bytes(self) -> Vec<u8> {
+        binary::sec_bytes(binary::SEC_TABLE, self.segments)
+    }
+}
+
+#[derive(Debug)]
+pub struct Elem {
+    pub ty: RefType,
+    pub init: WasmVec<FuncIdx>,
+    pub mode: ElemMode,
+}
+
+impl Elem {
+    pub fn insert(&mut self, func: FuncIdx) {
+        self.init.extend([func]);
+    }
+}
+
+impl Default for Elem {
+    fn default() -> Self {
+        Elem {
+            ty: RefType::Func,
+            init: WasmVec::default(),
+            mode: ElemMode::default(),
+        }
+    }
+}
+
+impl IntoBytes for Elem {
+    /// Described in <https://webassembly.github.io/spec/core/binary/modules.html#element-section>.
+    /// I'm not sure I fully understand it, so I'm just implementing the subset
+    /// that is useful to this program.
+    fn into_bytes(self) -> Vec<u8> {
+        let ElemMode::Active {
+            table: table_idx,
+            offset,
+        } = self.mode;
+
+        assert_eq!(self.ty, RefType::Func);
+        assert_eq!(table_idx.0, 0);
+
+        let mut buf = vec![0x00];
+
+        buf.extend(offset.into_bytes());
+        buf.extend(self.init.into_bytes());
+
+        buf
+    }
+}
+
+#[derive(Debug)]
+pub enum ElemMode {
+    // Not all the possibilities, but the other ones start to get more complex
+    // to encode.
+    Active { table: TableIdx, offset: Expr },
+}
+
+impl Default for ElemMode {
+    fn default() -> Self {
+        ElemMode::Active {
+            table: TableIdx(0),
+            offset: {
+                let mut expr = Expr::new();
+                expr.extend([binary::CONST_I32, 0x00]);
+                expr
+            },
+        }
     }
 }
 

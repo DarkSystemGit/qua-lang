@@ -14,6 +14,7 @@ struct WasmGenState {
     module: wasm::Module,
     cur_func: wasm::Func,
     mem_store: MemStore,
+    elem_segment: wasm::Elem,
 }
 impl WasmGenState {
     fn new() -> Self {
@@ -33,9 +34,19 @@ impl WasmGenState {
         };
         module.funcs.insert_import(import_host_print);
 
+        let mut table_sec = wasm::TableSection::new();
+        table_sec.insert(wasm::TableType {
+            limits: wasm::Limits { min: 0, max: None },
+            ty: wasm::RefType::Func,
+        });
+        module.table_sec = Some(table_sec);
+
         let mem_idx = module.mem_sec.insert(wasm::MemType {
             limits: wasm::Limits { min: 64, max: None },
         });
+
+        module.elem_sec = Some(wasm::ElemSection::new());
+        let elem_segment = wasm::Elem::default();
 
         let main_func = {
             let ty = wasm::FuncType {
@@ -50,6 +61,7 @@ impl WasmGenState {
             module,
             cur_func: main_func,
             mem_store: MemStore::new(mem_idx),
+            elem_segment,
         }
     }
 
