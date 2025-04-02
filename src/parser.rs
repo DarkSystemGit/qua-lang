@@ -83,7 +83,12 @@ impl Parser {
 
             // Insert the var *after* parsing value so that shadowing works
             let name = ident.name.clone();
-            let value = self.parse_expr(env).inspect(|_| env.declare_local(name))?;
+            let value = self.parse_expr(env)?;
+
+            // Declare and resolve var
+            env.declare_local(name.clone());
+            let loc = env.resolve(&name).expect("just declared ident in env");
+            let ident = ident.resolve(loc);
 
             Ok(Binding {
                 ident,
