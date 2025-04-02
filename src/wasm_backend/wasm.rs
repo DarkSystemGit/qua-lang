@@ -2,6 +2,8 @@ use std::collections::HashMap;
 
 use binary::{IntoBytes, WasmVec};
 
+use crate::ast;
+
 use super::{MemPtr, MEM_PTR_TY};
 
 pub mod binary;
@@ -28,7 +30,9 @@ impl IntoBytes for Module {
                      ty,
                      locals,
                      body,
+
                      next_local_idx: _,
+                     stack: _,
                  }| (ty, FuncCode::from((locals, body))),
             )
             .unzip();
@@ -332,8 +336,11 @@ impl IntoBytes for Name {
 
 pub struct Func {
     pub ty: TypeIdx,
+
     locals: Vec<Local>,
     next_local_idx: u32,
+    stack: HashMap<ast::IdentLocation, LocalIdx>,
+
     pub body: binary::Expr,
 }
 
@@ -343,11 +350,12 @@ impl Func {
             ty,
             locals: Vec::new(),
             next_local_idx: 0,
+            stack: HashMap::new(),
             body: binary::Expr::new(),
         }
     }
 
-    pub fn insert_local(&mut self, ty: ValType) -> LocalIdx {
+    pub fn insert_local(&mut self, ty: ValType, stack_loc: Option<ast::IdentLocation>) -> LocalIdx {
         match self.locals.last_mut() {
             Some(local) if local.ty == ty => local.num += 1,
             Some(_) | None => self.locals.push(Local::new(ty)),
@@ -355,14 +363,23 @@ impl Func {
 
         let idx = LocalIdx(self.next_local_idx);
         self.next_local_idx += 1;
+
+        if let Some(stack_loc) = stack_loc {
+            self.stack.insert(stack_loc, idx);
+        }
+
         idx
     }
 
     /// Places the value on the top of the stack into a new local.
     ///
     /// `[T] -> []`
-    pub fn gen_local_set(&mut self, ty: ValType) -> LocalIdx {
-        let idx = self.insert_local(ty);
+    pub fn gen_local_set(
+        &mut self,
+        ty: ValType,
+        stack_loc: Option<ast::IdentLocation>,
+    ) -> LocalIdx {
+        let idx = self.insert_local(ty, stack_loc);
         self.body.extend(binary::LOCAL_SET);
         self.body.extend(idx);
         idx
@@ -371,8 +388,12 @@ impl Func {
     /// Places the value on the top of the stack in a new local and returns it.
     ///
     /// `[T] -> [T]`
-    pub fn gen_local_tee(&mut self, ty: ValType) -> LocalIdx {
-        let idx = self.insert_local(ty);
+    pub fn gen_local_tee(
+        &mut self,
+        ty: ValType,
+        stack_loc: Option<ast::IdentLocation>,
+    ) -> LocalIdx {
+        let idx = self.insert_local(ty, stack_loc);
         self.body.extend(binary::LOCAL_TEE);
         self.body.extend(idx);
         idx
@@ -384,6 +405,11 @@ impl Func {
     pub fn gen_local_get(&mut self, idx: LocalIdx) {
         self.body.extend(binary::LOCAL_GET);
         self.body.extend(idx);
+    }
+
+    pub fn gen_stack_get(&mut self, stack_loc: &ast::IdentLocation) {
+        let idx = *self.stack.get(stack_loc).expect("stack location is valid");
+        self.gen_local_get(idx);
     }
 
     /// Boxes the top item on the stack and returns a pointer to it.
@@ -445,7 +471,7 @@ impl Func {
     /// `[I32] -> [T]`
     pub fn gen_unbox(&mut self, box_ty: BoxType) {
         // Save address to local
-        let ptr_idx = self.gen_local_tee(MEM_PTR_TY);
+        let ptr_idx = self.gen_local_tee(MEM_PTR_TY, None);
 
         self.body.extend(binary::MEM_I32_LOAD_8U);
         self.body.extend([
@@ -490,7 +516,7 @@ impl Func {
         self.gen_unbox(unbox_ty);
 
         func(self);
-        let res_idx = self.gen_local_set(rebox_ptr.box_ty.into());
+        let res_idx = self.gen_local_set(rebox_ptr.box_ty.into(), None);
 
         self.gen_box(
             rebox_ptr,

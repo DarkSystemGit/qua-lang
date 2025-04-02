@@ -95,7 +95,13 @@ impl WasmGenState {
         match binding.metadata {
             ast::BindingMetadata::Var => {
                 self.gen_expr(binding.value);
-                self.cur_func.gen_local_set(MEM_PTR_TY);
+                self.cur_func.gen_local_set(
+                    MEM_PTR_TY,
+                    Some(binding.ident.location.expect(&format!(
+                        "location resolved for ident, {}",
+                        binding.ident.name
+                    ))),
+                );
             }
             ast::BindingMetadata::Func {
                 arguments,
@@ -186,7 +192,7 @@ impl WasmGenState {
                 };
 
                 self.gen_expr(binary_expr.rhs);
-                let rhs_idx = self.cur_func.gen_local_set(MEM_PTR_TY);
+                let rhs_idx = self.cur_func.gen_local_set(MEM_PTR_TY, None);
 
                 self.gen_expr(binary_expr.lhs);
 
@@ -260,7 +266,11 @@ impl WasmGenState {
                     [|func: &mut wasm::Func| func.body.extend([wasm::binary::CONST_I32, 0b0])],
                 ),
             },
-            ast::Expr::Identifier(identifier) => todo!(),
+            ast::Expr::Identifier(identifier) => self.cur_func.gen_stack_get(
+                &identifier
+                    .location
+                    .expect(&format!("location resolved for ident, {}", identifier.name)),
+            ),
         }
     }
 }
