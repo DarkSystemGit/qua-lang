@@ -35,7 +35,7 @@ impl WasmGenState {
 
         let mut table_sec = wasm::TableSection::new();
         table_sec.insert(wasm::TableType {
-            limits: wasm::Limits { min: 0, max: None },
+            limits: wasm::Limits { min: 64, max: None },
             ty: wasm::RefType::Func,
         });
         module.table_sec = Some(table_sec);
