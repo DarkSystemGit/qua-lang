@@ -608,14 +608,14 @@ impl IntoBytes for TableIdx {
 
 #[derive(Debug)]
 pub struct TableType {
-    pub limits: Limits,
     pub ty: RefType,
+    pub limits: Limits,
 }
 
 impl IntoBytes for TableType {
     fn into_bytes(self) -> Vec<u8> {
-        let mut buf = self.limits.into_bytes();
-        buf.extend(self.ty.into_bytes());
+        let mut buf = self.ty.into_bytes();
+        buf.extend(self.limits.into_bytes());
         buf
     }
 }
@@ -653,7 +653,7 @@ impl ElemSection {
 
 impl IntoBytes for ElemSection {
     fn into_bytes(self) -> Vec<u8> {
-        binary::sec_bytes(binary::SEC_TABLE, self.segments)
+        binary::sec_bytes(binary::SEC_ELEM, self.segments)
     }
 }
 
