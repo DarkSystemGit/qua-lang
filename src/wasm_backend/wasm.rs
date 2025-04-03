@@ -49,9 +49,11 @@ impl IntoBytes for Module {
         buf.extend(self.ty_sec.into_bytes());
         buf.extend(import_section.into_bytes());
         buf.extend(func_sec.into_bytes());
+        buf.extend(self.table_sec.into_bytes());
         buf.extend(self.mem_sec.into_bytes());
         buf.extend(self.export_sec.into_bytes());
         buf.extend(self.start_sec.into_bytes());
+        buf.extend(self.elem_sec.into_bytes());
         buf.extend(code_sec.into_bytes());
         buf
     }
