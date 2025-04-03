@@ -141,6 +141,7 @@ pub enum BoxType {
     Num,
     Bool,
     String,
+    Func,
 }
 
 impl BoxType {
@@ -148,9 +149,11 @@ impl BoxType {
         match self {
             BoxType::Nil => 1,
             BoxType::Num => 64 / 8,
-            BoxType::Bool => 8 / 8,
+            BoxType::Bool => 1,
             // A string is stored as bytes
-            BoxType::String => 8 / 8,
+            BoxType::String => 1,
+            // Just a FuncIdx. an array of bytes.
+            BoxType::Func => 1,
         }
     }
 
@@ -160,6 +163,7 @@ impl BoxType {
             BoxType::Num => binary::MEM_F64_STORE,
             BoxType::Bool => binary::MEM_I32_STORE_8,
             BoxType::String => binary::MEM_I32_STORE_8,
+            BoxType::Func => binary::MEM_I32_STORE_8,
         }
     }
 
@@ -169,6 +173,7 @@ impl BoxType {
             BoxType::Num => binary::MEM_F64_LOAD,
             BoxType::Bool => binary::MEM_I32_LOAD_8U,
             BoxType::String => binary::MEM_I32_LOAD_8U,
+            BoxType::Func => binary::MEM_I32_LOAD_8U,
         }
     }
 
@@ -178,6 +183,7 @@ impl BoxType {
             BoxType::Num => 0b001,
             BoxType::Bool => 0b010,
             BoxType::String => 0b011,
+            BoxType::Func => 0b100,
         }
     }
 }
@@ -189,6 +195,7 @@ impl From<BoxType> for ValType {
             BoxType::Num => ValType::F64,
             BoxType::Bool => ValType::I32,
             BoxType::String => ValType::I32,
+            BoxType::Func => ValType::I32,
         }
     }
 }
