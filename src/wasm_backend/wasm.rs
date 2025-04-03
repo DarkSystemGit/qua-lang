@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use binary::{Expr, IntoBytes, WasmVec, SEC_TABLE};
+use binary::{Expr, IntoBytes, WasmVec};
 
 use crate::ast;
 
