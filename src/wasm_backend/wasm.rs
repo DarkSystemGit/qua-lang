@@ -367,14 +367,31 @@ pub struct Func {
 }
 
 impl Func {
-    pub fn new(ty: TypeIdx) -> Self {
-        Func {
+    pub fn new(ty: TypeIdx, num_args: u32) -> Self {
+        // Add one for the implicit self reference passed as the first param
+        Func::new_no_implicit_self_ref(ty, num_args + 1)
+    }
+
+    pub fn new_no_implicit_self_ref(ty: TypeIdx, num_args: u32) -> Self {
+        let mut this = Func {
             ty,
             locals: Vec::new(),
             next_local_idx: 0,
             stack: HashMap::new(),
             body: binary::Expr::new(),
+        };
+
+        // The args are next.
+        // - Don't actual make a locals entry for them, because they are
+        //   implicitly declared.
+        for i in 0..num_args {
+            let loc = ast::IdentLocation::Stack(ast::StackIndex(i as usize));
+            let idx = LocalIdx(this.next_local_idx);
+            this.next_local_idx += 1;
+            this.stack.insert(loc, idx);
         }
+
+        this
     }
 
     pub fn insert_local(&mut self, ty: ValType, stack_loc: Option<ast::IdentLocation>) -> LocalIdx {
@@ -425,12 +442,16 @@ impl Func {
     ///
     /// `[] -> [T]`
     pub fn gen_local_get(&mut self, idx: LocalIdx) {
+        assert!(idx.0 < self.next_local_idx);
         self.body.extend(binary::LOCAL_GET);
         self.body.extend(idx);
     }
 
     pub fn gen_stack_get(&mut self, stack_loc: &ast::IdentLocation) {
-        let idx = *self.stack.get(stack_loc).expect("stack location is valid");
+        let idx = *self
+            .stack
+            .get(stack_loc)
+            .expect(&format!("stack location should be valid {stack_loc:?}"));
         self.gen_local_get(idx);
     }
 

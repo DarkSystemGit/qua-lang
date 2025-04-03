@@ -24,7 +24,6 @@ impl WasmGenState {
             name: wasm::Name("print".to_string()),
             ty: {
                 let ty = wasm::FuncType {
-                    // TODO: funcs
                     params: [MEM_PTR_TY].into_iter().collect(),
                     results: WasmVec::new(),
                 };
@@ -50,7 +49,7 @@ impl WasmGenState {
                 results: WasmVec::new(),
             };
             let ty = module.ty_sec.insert(ty);
-            wasm::Func::new(ty)
+            wasm::Func::new_no_implicit_self_ref(ty, 0)
         };
 
         WasmGenState {
@@ -114,7 +113,12 @@ impl WasmGenState {
                 arguments,
                 upvalues,
             } => {
-                let param_tys = arguments.iter().map(|_| MEM_PTR_TY).collect();
+                let param_tys = {
+                    let mut args = WasmVec::new();
+                    args.extend([MEM_PTR_TY]); // self ref
+                    args.extend(arguments.iter().map(|_| MEM_PTR_TY));
+                    args
+                };
                 let result_ty = MEM_PTR_TY;
                 let ty = wasm::FuncType {
                     params: param_tys,
@@ -123,16 +127,13 @@ impl WasmGenState {
                 };
 
                 let ty = self.module.ty_sec.insert(ty);
-                let mut func = wasm::Func::new(ty);
+                let mut func = wasm::Func::new(ty, arguments.len() as u32);
 
-                // TODO: actual generate body
-                func.gen_box(
-                    self.mem_store.alloc(wasm::BoxType::Num),
-                    [|func: &mut wasm::Func| {
-                        func.body.extend(wasm::binary::CONST_F64);
-                        func.body.extend(42.0f64);
-                    }],
-                );
+                {
+                    std::mem::swap(&mut self.cur_func, &mut func);
+                    self.gen_expr(binding.value);
+                    std::mem::swap(&mut func, &mut self.cur_func);
+                }
 
                 let idx = self.module.funcs.insert(func);
                 let idx = self.module.funcs.raw_func_sec_idx(idx);
@@ -168,28 +169,35 @@ impl WasmGenState {
                 }
             }
             ast::Expr::Call(call) => {
-                // Put arguments onto the stack
-                for arg in call.arguments {
-                    self.gen_expr(arg);
-                }
-
-                // TODO: funcs
                 match *call.target {
                     ast::Expr::Identifier(identifier) if identifier.name == "print" => {
+                        for arg in call.arguments {
+                            self.gen_expr(arg);
+                        }
+
                         self.cur_func.body.extend(wasm::binary::CALL);
                         self.cur_func.body.extend(0u32);
                     }
                     expr => {
+                        // Put arguments onto the stack
+                        // Start with self reference
                         self.gen_expr(expr);
+                        let target_idx = self.cur_func.gen_local_tee(MEM_PTR_TY, None);
+                        // Then the real args
+                        for arg in call.arguments {
+                            self.gen_expr(arg);
+                        }
+
+                        self.cur_func.gen_local_get(target_idx);
                         self.cur_func.gen_unbox(wasm::BoxType::Func);
                         self.cur_func.body.extend(wasm::binary::CALL_INDIRECT);
                         // TODO: actually get type
-                        // but rn all funcs should be [I32] -> [I32] so it's ok
+                        // but rn all funcs should be [I32, I32] -> [I32] so it's ok
                         self.cur_func
                             .body
                             .extend(self.module.ty_sec.insert(wasm::FuncType {
-                                params: [wasm::ValType::I32].into_iter().collect(),
-                                results: [wasm::ValType::I32].into_iter().collect(),
+                                params: [MEM_PTR_TY, MEM_PTR_TY].into_iter().collect(),
+                                results: [MEM_PTR_TY].into_iter().collect(),
                             }));
                         self.cur_func.body.extend(0x00);
                     }
