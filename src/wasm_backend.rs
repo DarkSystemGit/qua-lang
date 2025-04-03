@@ -5,18 +5,15 @@ use crate::ast;
 mod wasm;
 
 pub fn gen_wasm(program: ast::Program) -> Vec<u8> {
-    let mut state = WasmGenState::new();
-    state.gen_program(program);
-    state.finish()
+    WasmGenState::gen(program)
 }
 
 struct WasmGenState {
     module: wasm::Module,
-    cur_func: wasm::Func,
     mem_store: MemStore,
 }
 impl WasmGenState {
-    fn new() -> Self {
+    fn gen(program: ast::Program) -> Vec<u8> {
         let mut module = wasm::Module::default();
 
         let import_host_print = wasm::FuncImport {
@@ -43,7 +40,7 @@ impl WasmGenState {
             limits: wasm::Limits { min: 64, max: None },
         });
 
-        let main_func = {
+        let mut main_func = {
             let ty = wasm::FuncType {
                 params: WasmVec::new(),
                 results: WasmVec::new(),
@@ -52,16 +49,17 @@ impl WasmGenState {
             wasm::Func::new_no_implicit_self_ref(ty, 0)
         };
 
-        WasmGenState {
+        let mut state = WasmGenState {
             module,
-            cur_func: main_func,
             mem_store: MemStore::new(mem_idx),
-        }
+        };
+        state.gen_program(&mut main_func, program);
+        state.finish(main_func)
     }
 
-    fn finish(mut self) -> Vec<u8> {
+    fn finish(mut self, func: wasm::Func) -> Vec<u8> {
         // Set up main function
-        let main_idx = self.module.funcs.insert(self.cur_func);
+        let main_idx = self.module.funcs.insert(func);
 
         // let start_sec = wasm::StartSection { func: idx };
         // self.module.start_sec = Some(start_sec);
@@ -86,17 +84,17 @@ impl WasmGenState {
         self.module.into_bytes()
     }
 
-    fn gen_program(&mut self, program: ast::Program) {
+    fn gen_program(&mut self, func: &mut wasm::Func, program: ast::Program) {
         for stmt in program {
-            self.gen_stmt(stmt);
+            self.gen_stmt(func, stmt);
         }
     }
 
-    fn gen_stmt(&mut self, stmt: ast::Stmt) {
+    fn gen_stmt(&mut self, func: &mut wasm::Func, stmt: ast::Stmt) {
         match stmt {
-            ast::Stmt::Let(binding) => self.gen_binding(binding),
+            ast::Stmt::Let(binding) => self.gen_binding(func, binding),
             ast::Stmt::Expr(expr) => {
-                self.gen_expr(expr);
+                self.gen_expr(func, expr);
 
                 // TODO: *all* expressions must generate some return value,
                 //       even if it's nil. Therefore, they must all be dropped.
@@ -104,10 +102,10 @@ impl WasmGenState {
         }
     }
 
-    fn gen_binding(&mut self, binding: ast::Binding) {
+    fn gen_binding(&mut self, func: &mut wasm::Func, binding: ast::Binding) {
         match binding.metadata {
             ast::BindingMetadata::Var => {
-                self.gen_expr(binding.value);
+                self.gen_expr(func, binding.value);
             }
             ast::BindingMetadata::Func {
                 arguments,
@@ -127,17 +125,13 @@ impl WasmGenState {
                 };
 
                 let ty = self.module.ty_sec.insert(ty);
-                let mut func = wasm::Func::new(ty, arguments.len() as u32);
+                let mut new_func = wasm::Func::new(ty, arguments.len() as u32);
 
-                {
-                    std::mem::swap(&mut self.cur_func, &mut func);
-                    self.gen_expr(binding.value);
-                    std::mem::swap(&mut func, &mut self.cur_func);
-                }
+                self.gen_expr(&mut new_func, binding.value);
 
-                let idx = self.module.funcs.insert(func);
+                let idx = self.module.funcs.insert(new_func);
                 let idx = self.module.funcs.raw_func_sec_idx(idx);
-                self.cur_func.gen_box(
+                func.gen_box(
                     self.mem_store.alloc(wasm::BoxType::Func),
                     [|func: &mut wasm::Func| {
                         func.body.extend(wasm::binary::CONST_I32);
@@ -147,7 +141,7 @@ impl WasmGenState {
             }
         }
 
-        self.cur_func.gen_local_set(
+        func.gen_local_set(
             MEM_PTR_TY,
             Some(binding.ident.location.expect(&format!(
                 "location resolved for ident, {}",
@@ -156,73 +150,71 @@ impl WasmGenState {
         );
     }
 
-    fn gen_expr(&mut self, expr: ast::Expr) {
+    fn gen_expr(&mut self, func: &mut wasm::Func, expr: ast::Expr) {
         // TODO: all expressions must return some value, even if it is nil.
         match expr {
             ast::Expr::Block(block) => {
                 for stmt in block.stmts {
-                    self.gen_stmt(stmt);
+                    self.gen_stmt(func, stmt);
                 }
 
                 if let Some(return_expr) = block.return_expr {
-                    self.gen_expr(*return_expr);
+                    self.gen_expr(func, *return_expr);
                 }
             }
             ast::Expr::Call(call) => {
                 match *call.target {
                     ast::Expr::Identifier(identifier) if identifier.name == "print" => {
                         for arg in call.arguments {
-                            self.gen_expr(arg);
+                            self.gen_expr(func, arg);
                         }
 
-                        self.cur_func.body.extend(wasm::binary::CALL);
-                        self.cur_func.body.extend(0u32);
+                        func.body.extend(wasm::binary::CALL);
+                        func.body.extend(0u32);
                     }
                     expr => {
                         // Put arguments onto the stack
                         // Start with self reference
-                        self.gen_expr(expr);
-                        let target_idx = self.cur_func.gen_local_tee(MEM_PTR_TY, None);
+                        self.gen_expr(func, expr);
+                        let target_idx = func.gen_local_tee(MEM_PTR_TY, None);
                         // Then the real args
-                        for arg in call.arguments {
-                            self.gen_expr(arg);
-                        }
+                        todo!();
 
-                        self.cur_func.gen_local_get(target_idx);
-                        self.cur_func.gen_unbox(wasm::BoxType::Func);
-                        self.cur_func.body.extend(wasm::binary::CALL_INDIRECT);
+                        func.gen_local_get(target_idx);
+                        func.gen_unbox(wasm::BoxType::Func);
+                        func.body.extend(wasm::binary::CALL_INDIRECT);
                         // TODO: actually get type
                         // but rn all funcs should be [I32, I32] -> [I32] so it's ok
-                        self.cur_func
-                            .body
-                            .extend(self.module.ty_sec.insert(wasm::FuncType {
-                                params: [MEM_PTR_TY, MEM_PTR_TY].into_iter().collect(),
-                                results: [MEM_PTR_TY].into_iter().collect(),
-                            }));
-                        self.cur_func.body.extend(0x00);
+                        func.body.extend(self.module.ty_sec.insert(wasm::FuncType {
+                            params: [MEM_PTR_TY, MEM_PTR_TY].into_iter().collect(),
+                            results: [MEM_PTR_TY].into_iter().collect(),
+                        }));
+                        func.body.extend(0x00);
                     }
                 }
             }
             ast::Expr::If(if_expr) => {
-                self.gen_expr(if_expr.condition);
-                self.cur_func.gen_unbox(wasm::BoxType::Bool);
+                self.gen_expr(func, if_expr.condition);
+                func.gen_unbox(wasm::BoxType::Bool);
 
-                self.cur_func.body.extend(wasm::binary::IF);
+                func.body.extend(wasm::binary::IF);
                 // Always return a boxed ptr, even if it's nil
-                self.cur_func.body.extend(MEM_PTR_TY);
-                self.gen_expr(ast::Expr::Block(if_expr.then_block));
+                func.body.extend(MEM_PTR_TY);
+                self.gen_expr(func, ast::Expr::Block(if_expr.then_block));
 
                 // Generate else block
                 if let Some(else_block) = if_expr.else_block {
-                    self.cur_func.body.extend(wasm::binary::ELSE);
+                    func.body.extend(wasm::binary::ELSE);
 
                     match else_block {
-                        ast::ElseBlock::ElseIf(if_expr) => self.gen_expr(ast::Expr::If(if_expr)),
-                        ast::ElseBlock::Else(block) => self.gen_expr(ast::Expr::Block(block)),
+                        ast::ElseBlock::ElseIf(if_expr) => {
+                            self.gen_expr(func, ast::Expr::If(if_expr))
+                        }
+                        ast::ElseBlock::Else(block) => self.gen_expr(func, ast::Expr::Block(block)),
                     }
                 }
 
-                self.cur_func.body.extend(wasm::binary::END);
+                func.body.extend(wasm::binary::END);
             }
             ast::Expr::Binary(binary_expr) => {
                 let (op_ty, ret_ty, instrs) = {
@@ -247,23 +239,22 @@ impl WasmGenState {
                     }
                 };
 
-                self.gen_expr(binary_expr.rhs);
-                let rhs_idx = self.cur_func.gen_local_set(MEM_PTR_TY, None);
+                self.gen_expr(func, binary_expr.rhs);
+                let rhs_idx = func.gen_local_set(MEM_PTR_TY, None);
 
-                self.gen_expr(binary_expr.lhs);
+                self.gen_expr(func, binary_expr.lhs);
 
-                self.cur_func
-                    .unwrap_box(op_ty, self.mem_store.alloc(ret_ty), |func| {
-                        func.gen_local_get(rhs_idx);
-                        func.gen_unbox(op_ty);
+                func.unwrap_box(op_ty, self.mem_store.alloc(ret_ty), |func| {
+                    func.gen_local_get(rhs_idx);
+                    func.gen_unbox(op_ty);
 
-                        func.body.extend(instrs)
-                    });
+                    func.body.extend(instrs)
+                });
             }
             ast::Expr::Unary(unary_expr) => {
-                self.gen_expr(unary_expr.rhs);
+                self.gen_expr(func, unary_expr.rhs);
                 match unary_expr.op {
-                    ast::UnaryOp::Not => self.cur_func.unwrap_box(
+                    ast::UnaryOp::Not => func.unwrap_box(
                         wasm::BoxType::Bool,
                         self.mem_store.alloc(wasm::BoxType::Bool),
                         |func|
@@ -272,7 +263,7 @@ impl WasmGenState {
                             // 0x1 xor 0x1 = 0x0
                             func.body.extend([wasm::binary::CONST_I32, 0x1, wasm::binary::XOR_I32]),
                     ),
-                    ast::UnaryOp::Negate => self.cur_func.unwrap_box(
+                    ast::UnaryOp::Negate => func.unwrap_box(
                         wasm::BoxType::Num,
                         self.mem_store.alloc(wasm::BoxType::Num),
                         |func| func.body.extend(wasm::binary::NEG_F64),
@@ -280,14 +271,14 @@ impl WasmGenState {
                 }
             }
             ast::Expr::Literal(literal) => match literal {
-                ast::Literal::Bool(b) => self.cur_func.gen_box(
+                ast::Literal::Bool(b) => func.gen_box(
                     self.mem_store.alloc(wasm::BoxType::Bool),
                     [|func: &mut wasm::Func| {
                         func.body.extend(wasm::binary::CONST_I32);
                         func.body.extend(b);
                     }],
                 ),
-                ast::Literal::Number(n) => self.cur_func.gen_box(
+                ast::Literal::Number(n) => func.gen_box(
                     self.mem_store.alloc(wasm::BoxType::Num),
                     [|func: &mut wasm::Func| {
                         func.body.extend(wasm::binary::CONST_F64);
@@ -300,7 +291,7 @@ impl WasmGenState {
                     buf.extend(s.into_bytes());
                     let buf = buf.into_bytes();
 
-                    self.cur_func.gen_box(
+                    func.gen_box(
                         self.mem_store
                             .alloc_n(wasm::BoxType::String, buf.len() as u32),
                         buf.into_iter().map(|byte| {
@@ -313,12 +304,12 @@ impl WasmGenState {
                         }),
                     );
                 }
-                ast::Literal::Nil => self.cur_func.gen_box(
+                ast::Literal::Nil => func.gen_box(
                     self.mem_store.alloc(wasm::BoxType::Nil),
                     [|func: &mut wasm::Func| func.body.extend([wasm::binary::CONST_I32, 0b0])],
                 ),
             },
-            ast::Expr::Identifier(identifier) => self.cur_func.gen_stack_get(
+            ast::Expr::Identifier(identifier) => func.gen_stack_get(
                 &identifier
                     .location
                     .expect(&format!("location resolved for ident, {}", identifier.name)),
