@@ -119,6 +119,7 @@ impl Parser {
     fn parse_func_binding(&mut self, env: &mut Env, ident: Identifier) -> Parse<Binding> {
         let name = ident.name.clone();
         env.declare_local(name.clone());
+        let ident = ident.resolve(env.resolve(&name).expect("just declared ident"));
         let mut env = env.new_frame(name.clone());
 
         let arguments = self.parse_arguments(
