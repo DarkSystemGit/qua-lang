@@ -296,13 +296,9 @@ impl WasmGenState {
                 ),
                 ast::Literal::Str(s) => {
                     // Encode as a WasmVec of UTF-8 chars
-                    let len: u32 = s.bytes().len().try_into().unwrap();
-                    let len: Vec<u8> = len.into_bytes();
-                    let buf = {
-                        let mut buf = len;
-                        buf.extend(s.into_bytes());
-                        buf
-                    };
+                    let mut buf = WasmVec::new();
+                    buf.extend(s.into_bytes());
+                    let buf = buf.into_bytes();
 
                     self.cur_func.gen_box(
                         self.mem_store
