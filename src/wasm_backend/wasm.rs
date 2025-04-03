@@ -311,6 +311,10 @@ impl Functions {
             .map(FuncIdx)
             .collect()
     }
+
+    pub fn raw_func_sec_idx(&self, idx: FuncIdx) -> u32 {
+        idx.0 - self.imports.size()
+    }
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -109,13 +109,6 @@ impl WasmGenState {
         match binding.metadata {
             ast::BindingMetadata::Var => {
                 self.gen_expr(binding.value);
-                self.cur_func.gen_local_set(
-                    MEM_PTR_TY,
-                    Some(binding.ident.location.expect(&format!(
-                        "location resolved for ident, {}",
-                        binding.ident.name
-                    ))),
-                );
             }
             ast::BindingMetadata::Func {
                 arguments,
@@ -130,13 +123,36 @@ impl WasmGenState {
                 };
 
                 let ty = self.module.ty_sec.insert(ty);
-                let func = wasm::Func::new(ty);
+                let mut func = wasm::Func::new(ty);
 
                 // TODO: actual generate body
+                func.gen_box(
+                    self.mem_store.alloc(wasm::BoxType::Num),
+                    [|func: &mut wasm::Func| {
+                        func.body.extend(wasm::binary::CONST_F64);
+                        func.body.extend(42.0f64);
+                    }],
+                );
 
-                self.module.funcs.insert(func);
+                let idx = self.module.funcs.insert(func);
+                let idx = self.module.funcs.raw_func_sec_idx(idx);
+                self.cur_func.gen_box(
+                    self.mem_store.alloc(wasm::BoxType::Func),
+                    [|func: &mut wasm::Func| {
+                        func.body.extend(wasm::binary::CONST_I32);
+                        func.body.extend(idx);
+                    }],
+                );
             }
         }
+
+        self.cur_func.gen_local_set(
+            MEM_PTR_TY,
+            Some(binding.ident.location.expect(&format!(
+                "location resolved for ident, {}",
+                binding.ident.name
+            ))),
+        );
     }
 
     fn gen_expr(&mut self, expr: ast::Expr) {
@@ -158,8 +174,26 @@ impl WasmGenState {
                 }
 
                 // TODO: funcs
-                self.cur_func.body.extend(wasm::binary::CALL);
-                self.cur_func.body.extend(0u32);
+                match *call.target {
+                    ast::Expr::Identifier(identifier) if identifier.name == "print" => {
+                        self.cur_func.body.extend(wasm::binary::CALL);
+                        self.cur_func.body.extend(0u32);
+                    }
+                    expr => {
+                        self.gen_expr(expr);
+                        self.cur_func.gen_unbox(wasm::BoxType::Func);
+                        self.cur_func.body.extend(wasm::binary::CALL_INDIRECT);
+                        // TODO: actually get type
+                        // but rn all funcs should be [I32] -> [I32] so it's ok
+                        self.cur_func
+                            .body
+                            .extend(self.module.ty_sec.insert(wasm::FuncType {
+                                params: [wasm::ValType::I32].into_iter().collect(),
+                                results: [wasm::ValType::I32].into_iter().collect(),
+                            }));
+                        self.cur_func.body.extend(0x00);
+                    }
+                }
             }
             ast::Expr::If(if_expr) => {
                 self.gen_expr(if_expr.condition);
