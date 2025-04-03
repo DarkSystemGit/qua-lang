@@ -144,6 +144,7 @@ pub enum BoxType {
     Bool,
     String,
     Func,
+    Vec,
 }
 
 impl BoxType {
@@ -156,6 +157,8 @@ impl BoxType {
             BoxType::String => 1,
             // Just a FuncIdx. an array of bytes.
             BoxType::Func => 1,
+            // A string is stored as bytes
+            BoxType::Vec => 1,
         }
     }
 
@@ -166,6 +169,7 @@ impl BoxType {
             BoxType::Bool => binary::MEM_I32_STORE_8,
             BoxType::String => binary::MEM_I32_STORE_8,
             BoxType::Func => binary::MEM_I32_STORE_8,
+            BoxType::Vec => binary::MEM_I32_STORE_8,
         }
     }
 
@@ -176,6 +180,7 @@ impl BoxType {
             BoxType::Bool => binary::MEM_I32_LOAD_8U,
             BoxType::String => binary::MEM_I32_LOAD_8U,
             BoxType::Func => binary::MEM_I32_LOAD_8U,
+            BoxType::Vec => binary::MEM_I32_LOAD_8U,
         }
     }
 
@@ -186,6 +191,7 @@ impl BoxType {
             BoxType::Bool => 0b010,
             BoxType::String => 0b011,
             BoxType::Func => 0b100,
+            BoxType::Vec => 0b101,
         }
     }
 }
@@ -198,6 +204,7 @@ impl From<BoxType> for ValType {
             BoxType::Bool => ValType::I32,
             BoxType::String => ValType::I32,
             BoxType::Func => ValType::I32,
+            BoxType::Vec => ValType::I32,
         }
     }
 }
