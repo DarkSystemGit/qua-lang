@@ -14,7 +14,6 @@ struct WasmGenState {
     module: wasm::Module,
     cur_func: wasm::Func,
     mem_store: MemStore,
-    elem_segment: wasm::Elem,
 }
 impl WasmGenState {
     fn new() -> Self {
@@ -45,9 +44,6 @@ impl WasmGenState {
             limits: wasm::Limits { min: 64, max: None },
         });
 
-        module.elem_sec = Some(wasm::ElemSection::new());
-        let elem_segment = wasm::Elem::default();
-
         let main_func = {
             let ty = wasm::FuncType {
                 params: WasmVec::new(),
@@ -61,7 +57,6 @@ impl WasmGenState {
             module,
             cur_func: main_func,
             mem_store: MemStore::new(mem_idx),
-            elem_segment,
         }
     }
 
@@ -81,6 +76,13 @@ impl WasmGenState {
             desc: wasm::ExportDesc::Mem(self.mem_store.mem_idx),
         });
         self.module.export_sec = Some(export_sec);
+
+        // Populate elem section
+        let mut elem_sec = wasm::ElemSection::new();
+        let mut elem_segment = wasm::Elem::default();
+        elem_segment.insert(self.module.funcs.all_idxs());
+        elem_sec.insert(elem_segment);
+        self.module.elem_sec = Some(elem_sec);
 
         self.module.into_bytes()
     }

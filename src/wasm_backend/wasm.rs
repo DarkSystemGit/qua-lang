@@ -295,6 +295,13 @@ impl Functions {
         self.imports.extend([import]);
         idx
     }
+
+    pub fn all_idxs(&self) -> Vec<FuncIdx> {
+        (0..self.funcs.len())
+            .map(|i| i as u32 + self.imports.size())
+            .map(FuncIdx)
+            .collect()
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -649,8 +656,8 @@ pub struct Elem {
 }
 
 impl Elem {
-    pub fn insert(&mut self, func: FuncIdx) {
-        self.init.extend([func]);
+    pub fn insert(&mut self, func: Vec<FuncIdx>) {
+        self.init.extend(func);
     }
 }
 
