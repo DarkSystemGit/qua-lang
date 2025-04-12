@@ -111,19 +111,7 @@ impl WasmGenState {
                 arguments,
                 upvalues,
             } => {
-                let param_tys = {
-                    let mut args = WasmVec::new();
-                    args.extend([MEM_PTR_TY]); // self ref
-                    args.extend(arguments.iter().map(|_| MEM_PTR_TY));
-                    args
-                };
-                let result_ty = MEM_PTR_TY;
-                let ty = wasm::FuncType {
-                    params: param_tys,
-                    // Functions can only have 1 return type as of now
-                    results: [result_ty].into_iter().collect(),
-                };
-
+                let ty = wasm::FuncType::new(arguments.len(), MEM_PTR_TY);
                 let ty = self.module.ty_sec.insert(ty);
                 let mut new_func = wasm::Func::new(ty, arguments.len() as u32);
 
@@ -178,17 +166,22 @@ impl WasmGenState {
                         self.gen_expr(func, expr);
                         let target_idx = func.gen_local_tee(MEM_PTR_TY, None);
                         // Then the real args
-                        todo!();
+                        // Save this before call.arguments is consumed in the for loop
+                        let num_args = call.arguments.len();
+                        for arg in call.arguments {
+                            self.gen_expr(func, arg);
+                        }
 
                         func.gen_local_get(target_idx);
                         func.gen_unbox(wasm::BoxType::Func);
                         func.body.extend(wasm::binary::CALL_INDIRECT);
                         // TODO: actually get type
                         // but rn all funcs should be [I32, I32] -> [I32] so it's ok
-                        func.body.extend(self.module.ty_sec.insert(wasm::FuncType {
-                            params: [MEM_PTR_TY, MEM_PTR_TY].into_iter().collect(),
-                            results: [MEM_PTR_TY].into_iter().collect(),
-                        }));
+                        func.body.extend(
+                            self.module
+                                .ty_sec
+                                .insert(wasm::FuncType::new(num_args, MEM_PTR_TY)),
+                        );
                         func.body.extend(0x00);
                     }
                 }

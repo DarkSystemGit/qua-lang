@@ -102,6 +102,19 @@ pub struct FuncType {
     pub results: WasmVec<ValType>,
 }
 
+impl FuncType {
+    pub fn new<'a>(num_args: usize, result_ty: ValType) -> Self {
+        let mut params = WasmVec::new();
+        params.extend([MEM_PTR_TY]); // self ref
+        params.extend(vec![MEM_PTR_TY; num_args]);
+
+        // Functions can only have 1 return type as of now
+        let results = [result_ty].into_iter().collect();
+
+        FuncType { params, results }
+    }
+}
+
 impl IntoBytes for FuncType {
     fn into_bytes(self) -> Vec<u8> {
         let mut buf = vec![binary::TY_FUNC];
