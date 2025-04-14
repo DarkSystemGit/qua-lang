@@ -192,8 +192,6 @@ impl WasmGenState {
                         func.gen_local_get(target_idx);
                         func.gen_unbox(wasm::BoxType::Func);
                         func.body.extend(wasm::binary::CALL_INDIRECT);
-                        // TODO: actually get type
-                        // but rn all funcs should be [I32, I32] -> [I32] so it's ok
                         func.body.extend(
                             self.module
                                 .ty_sec
