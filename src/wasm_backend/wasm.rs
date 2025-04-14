@@ -388,12 +388,22 @@ pub struct Func {
 }
 
 impl Func {
-    pub fn new(ty: TypeIdx, num_args: u32) -> Self {
+    pub fn new<I: IntoIterator<Item = MemPtr>>(ty: TypeIdx, num_args: u32, upvalues: I) -> Self
+    where
+        I::IntoIter: DoubleEndedIterator + ExactSizeIterator,
+    {
         // Add one for the implicit self reference passed as the first param
-        Func::new_no_implicit_self_ref(ty, num_args + 1)
+        Func::new_no_implicit_self_ref(ty, num_args + 1, upvalues)
     }
 
-    pub fn new_no_implicit_self_ref(ty: TypeIdx, num_args: u32) -> Self {
+    pub fn new_no_implicit_self_ref<I: IntoIterator<Item = MemPtr>>(
+        ty: TypeIdx,
+        num_args: u32,
+        upvalues: I,
+    ) -> Self
+    where
+        I::IntoIter: DoubleEndedIterator + ExactSizeIterator,
+    {
         let mut this = Func {
             ty,
             locals: Vec::new(),
@@ -402,7 +412,7 @@ impl Func {
             body: binary::Expr::new(),
         };
 
-        // The args are next.
+        // First the args
         // - Don't actual make a locals entry for them, because they are
         //   implicitly declared.
         for i in 0..num_args {
@@ -410,6 +420,18 @@ impl Func {
             let idx = LocalIdx(this.next_local_idx);
             this.next_local_idx += 1;
             this.stack.insert(loc, idx);
+        }
+
+        // Now the upvalues
+        for (i, ptr) in upvalues.into_iter().enumerate() {
+            this.body.extend(binary::CONST_I32);
+            this.body.extend(ptr.address);
+
+            // `ptr` has type `BoxType::Ptr` (ie it is a pointer to a pointer)
+            this.gen_unbox(BoxType::Ptr);
+
+            let loc = ast::IdentLocation::Upvalue(ast::UpvalueIndex(i as usize));
+            this.gen_local_set(MEM_PTR_TY, Some(loc));
         }
 
         this

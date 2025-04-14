@@ -46,7 +46,7 @@ impl WasmGenState {
                 results: WasmVec::new(),
             };
             let ty = module.ty_sec.insert(ty);
-            wasm::Func::new_no_implicit_self_ref(ty, 0)
+            wasm::Func::new_no_implicit_self_ref(ty, 0, [])
         };
 
         let mut state = WasmGenState {
@@ -113,7 +113,24 @@ impl WasmGenState {
             } => {
                 let ty = wasm::FuncType::new(arguments.len(), MEM_PTR_TY);
                 let ty = self.module.ty_sec.insert(ty);
-                let mut new_func = wasm::Func::new(ty, arguments.len() as u32);
+                let mut new_func = {
+                    // Put upvalues on the stack
+                    let upvalues = upvalues.iter().map(|upvalue| {
+                        // Store the pointer in memory.
+                        // The address returned is a pointer to a pointer lol.
+                        // A smarter implementation could probably track the
+                        // address of locals so this wouldn't be necessary.
+                        let ptr = self.mem_store.alloc(wasm::BoxType::Ptr);
+                        func.gen_box(
+                            ptr,
+                            [|func: &mut wasm::Func| func.gen_stack_get(&upvalue.target)],
+                        );
+                        func.body.extend(wasm::binary::DROP);
+                        ptr
+                    });
+
+                    wasm::Func::new(ty, arguments.len() as u32, upvalues)
+                };
 
                 self.gen_expr(&mut new_func, binding.value);
 
