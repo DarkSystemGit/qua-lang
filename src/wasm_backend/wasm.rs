@@ -167,8 +167,8 @@ impl BoxType {
             BoxType::Bool => 1,
             // A string is stored as bytes
             BoxType::String => 1,
-            // Just a FuncIdx. an array of bytes.
-            BoxType::Func => 1,
+            // A FuncIdx (u32)
+            BoxType::Func => 32 / 8,
         }
     }
 
@@ -178,7 +178,7 @@ impl BoxType {
             BoxType::Num => binary::MEM_F64_STORE,
             BoxType::Bool => binary::MEM_I32_STORE_8,
             BoxType::String => binary::MEM_I32_STORE_8,
-            BoxType::Func => binary::MEM_I32_STORE_8,
+            BoxType::Func => binary::MEM_I32_STORE,
         }
     }
 
@@ -188,7 +188,7 @@ impl BoxType {
             BoxType::Num => binary::MEM_F64_LOAD,
             BoxType::Bool => binary::MEM_I32_LOAD_8U,
             BoxType::String => binary::MEM_I32_LOAD_8U,
-            BoxType::Func => binary::MEM_I32_LOAD_8U,
+            BoxType::Func => binary::MEM_I32_LOAD,
         }
     }
 
