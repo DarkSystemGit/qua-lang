@@ -152,6 +152,8 @@ impl IntoBytes for ValType {
 ///   to) contains a tag indicating the type of the data.
 #[derive(Clone, Copy, Debug)]
 pub enum BoxType {
+    Ptr,
+
     Nil,
     Num,
     Bool,
@@ -169,6 +171,8 @@ impl BoxType {
             BoxType::String => 1,
             // A FuncIdx (u32)
             BoxType::Func => 32 / 8,
+            // A MemIdx (u32)
+            BoxType::Ptr => 32 / 8,
         }
     }
 
@@ -179,6 +183,7 @@ impl BoxType {
             BoxType::Bool => binary::MEM_I32_STORE_8,
             BoxType::String => binary::MEM_I32_STORE_8,
             BoxType::Func => binary::MEM_I32_STORE,
+            BoxType::Ptr => binary::MEM_I32_STORE,
         }
     }
 
@@ -189,6 +194,7 @@ impl BoxType {
             BoxType::Bool => binary::MEM_I32_LOAD_8U,
             BoxType::String => binary::MEM_I32_LOAD_8U,
             BoxType::Func => binary::MEM_I32_LOAD,
+            BoxType::Ptr => binary::MEM_I32_LOAD,
         }
     }
 
@@ -199,6 +205,7 @@ impl BoxType {
             BoxType::Bool => 0b010,
             BoxType::String => 0b011,
             BoxType::Func => 0b100,
+            BoxType::Ptr => 0b101,
         }
     }
 }
@@ -211,6 +218,7 @@ impl From<BoxType> for ValType {
             BoxType::Bool => ValType::I32,
             BoxType::String => ValType::I32,
             BoxType::Func => ValType::I32,
+            BoxType::Ptr => MEM_PTR_TY,
         }
     }
 }
