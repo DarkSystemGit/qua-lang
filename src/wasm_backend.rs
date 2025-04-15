@@ -134,15 +134,7 @@ impl WasmGenState {
 
                 self.gen_expr(&mut new_func, binding.value);
 
-                let idx = self.module.funcs.insert(new_func);
-                let idx = self.module.funcs.raw_func_sec_idx(idx);
-                func.gen_box(
-                    self.mem_store.alloc(wasm::BoxType::Func),
-                    [|func: &mut wasm::Func| {
-                        func.body.extend(wasm::binary::CONST_I32);
-                        func.body.extend(idx);
-                    }],
-                );
+                self.gen_func_def(func, new_func);
             }
         }
 
@@ -152,6 +144,18 @@ impl WasmGenState {
                 "location resolved for ident, {}",
                 binding.ident.name
             ))),
+        );
+    }
+
+    fn gen_func_def(&mut self, func: &mut wasm::Func, new_func: wasm::Func) {
+        let idx = self.module.funcs.insert(new_func);
+        let idx = self.module.funcs.raw_func_sec_idx(idx);
+        func.gen_box(
+            self.mem_store.alloc(wasm::BoxType::Func),
+            [|func: &mut wasm::Func| {
+                func.body.extend(wasm::binary::CONST_I32);
+                func.body.extend(idx);
+            }],
         );
     }
 
