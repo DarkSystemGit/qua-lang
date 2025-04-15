@@ -4,6 +4,9 @@ use crate::ast;
 
 mod wasm;
 
+// Whether or not to generate code to check types of boxes at runtime.
+const CHECK_TYPES: bool = true;
+
 pub fn gen_wasm(program: ast::Program) -> Vec<u8> {
     WasmGenState::gen(program)
 }

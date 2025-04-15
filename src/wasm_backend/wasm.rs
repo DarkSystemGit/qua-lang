@@ -4,7 +4,7 @@ use binary::{Expr, IntoBytes, WasmVec};
 
 use crate::ast;
 
-use super::{MemPtr, MEM_PTR_TY};
+use super::{MemPtr, CHECK_TYPES, MEM_PTR_TY};
 
 pub mod binary;
 
@@ -561,24 +561,27 @@ impl Func {
     ///
     /// `[I32] -> [T]`
     pub fn gen_unbox(&mut self, box_ty: BoxType) {
-        // Save address to local
-        let ptr_idx = self.gen_local_tee(MEM_PTR_TY, None);
+        if CHECK_TYPES {
+            // Save address to local
+            let ptr_idx = self.gen_local_tee(MEM_PTR_TY, None);
 
-        self.body.extend(binary::MEM_I32_LOAD_8U);
-        self.body.extend([
-            0x00u8, // Align 2^0=1
-            0x00,   // Offset 0
-        ]);
+            self.body.extend(binary::MEM_I32_LOAD_8U);
+            self.body.extend([
+                0x00u8, // Align 2^0=1
+                0x00,   // Offset 0
+            ]);
 
-        // Verify type
-        // Tag is on top of stack
-        self.body.extend([binary::CONST_I32, box_ty.tag()]);
-        self.body.extend(binary::NE_I32);
-        self.body
-            .extend([binary::IF, binary::TY_NEVER, binary::TRAP, binary::END]);
+            // Verify type
+            // Tag is on top of stack
+            self.body.extend([binary::CONST_I32, box_ty.tag()]);
+            self.body.extend(binary::NE_I32);
+            self.body
+                .extend([binary::IF, binary::TY_NEVER, binary::TRAP, binary::END]);
 
-        // Get the address
-        self.gen_local_get(ptr_idx);
+            // Put address back on the stack
+            self.gen_local_get(ptr_idx);
+        }
+
         // Add one to ignore the tag byte
         self.body.extend([binary::CONST_I32, 0x01, binary::ADD_I32]);
         // Actually load the data
