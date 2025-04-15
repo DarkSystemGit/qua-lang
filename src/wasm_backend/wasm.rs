@@ -40,7 +40,7 @@ impl IntoBytes for Module {
             .unzip();
 
         let import_section = ImportSection {
-            func_imports: self.funcs.imports,
+            func_imports: self.funcs.imports.into_iter().collect(),
         };
 
         let mut buf = Vec::new();
@@ -300,13 +300,13 @@ impl IntoBytes for FuncCode {
 /// (function) imports section.
 #[derive(Default)]
 pub struct Functions {
-    imports: WasmVec<FuncImport>,
+    imports: Vec<FuncImport>,
     funcs: Vec<Func>,
 }
 
 impl Functions {
     fn next_idx(&self) -> FuncIdx {
-        FuncIdx(self.imports.size() + self.funcs.len() as u32)
+        FuncIdx((self.imports.len() + self.funcs.len()) as u32)
     }
 
     pub fn insert(&mut self, func: Func) -> FuncIdx {
@@ -326,15 +326,20 @@ impl Functions {
         idx
     }
 
+    pub fn imports(&self) -> &Vec<FuncImport> {
+        &self.imports
+    }
+
     pub fn all_idxs(&self) -> Vec<FuncIdx> {
         (0..self.funcs.len())
-            .map(|i| i as u32 + self.imports.size())
+            .map(|i| i + self.imports.len())
+            .map(|i| i as u32)
             .map(FuncIdx)
             .collect()
     }
 
     pub fn raw_func_sec_idx(&self, idx: FuncIdx) -> u32 {
-        idx.0 - self.imports.size()
+        idx.0 - self.imports.len() as u32
     }
 }
 
@@ -347,7 +352,7 @@ impl IntoBytes for FuncIdx {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct FuncImport {
     pub module: Name,
     pub name: Name,
@@ -368,7 +373,7 @@ impl IntoBytes for FuncImport {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Name(pub String);
 impl IntoBytes for Name {
     fn into_bytes(self) -> Vec<u8> {
