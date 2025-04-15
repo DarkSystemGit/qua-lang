@@ -53,6 +53,31 @@ impl WasmGenState {
             module,
             mem_store: MemStore::new(mem_idx),
         };
+
+        // Add imports vars to main func.
+        // Assumes that import indexes are in order (`.enumerate()`), and that
+        // new imports will not be added after/during this loop (`.clone()`).
+        for (i, _) in state.module.funcs.imports().clone().iter().enumerate() {
+            // TODO: actually track # of args + result
+            let ty = wasm::FuncType {
+                params: [MEM_PTR_TY, MEM_PTR_TY].into_iter().collect(),
+                results: WasmVec::new(),
+            };
+            let ty = state.module.ty_sec.insert(ty);
+            let mut func = wasm::Func::new(ty, 1, []);
+            // Assumes first arg is at index 1
+            func.gen_stack_get(&ast::IdentLocation::Stack(ast::StackIndex(1)));
+            func.body.extend(wasm::binary::CALL);
+            func.body.extend(i as u32);
+
+            state.gen_func_def(&mut main_func, func);
+            main_func.gen_local_set(
+                MEM_PTR_TY,
+                // Assumes that the imports are in order in the ast stack
+                Some(ast::IdentLocation::Stack(ast::StackIndex(i))),
+            );
+        }
+
         state.gen_program(&mut main_func, program);
         state.finish(main_func)
     }
@@ -173,14 +198,6 @@ impl WasmGenState {
             }
             ast::Expr::Call(call) => {
                 match *call.target {
-                    ast::Expr::Identifier(identifier) if identifier.name == "print" => {
-                        for arg in call.arguments {
-                            self.gen_expr(func, arg);
-                        }
-
-                        func.body.extend(wasm::binary::CALL);
-                        func.body.extend(0u32);
-                    }
                     expr => {
                         // Put arguments onto the stack
                         // Start with self reference
