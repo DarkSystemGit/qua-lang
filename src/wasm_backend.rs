@@ -59,16 +59,14 @@ impl WasmGenState {
         // new imports will not be added after/during this loop (`.clone()`).
         for (i, _) in state.module.funcs.imports().clone().iter().enumerate() {
             // TODO: actually track # of args + result
-            let ty = wasm::FuncType {
-                params: [MEM_PTR_TY, MEM_PTR_TY].into_iter().collect(),
-                results: WasmVec::new(),
-            };
+            let ty = wasm::FuncType::new(1, MEM_PTR_TY);
             let ty = state.module.ty_sec.insert(ty);
             let mut func = wasm::Func::new(ty, 1, []);
             // Assumes first arg is at index 1
             func.gen_stack_get(&ast::IdentLocation::Stack(ast::StackIndex(1)));
             func.body.extend(wasm::binary::CALL);
             func.body.extend(i as u32);
+            state.gen_boxed_nil(&mut func);
 
             state.gen_func_def(&mut main_func, func);
             main_func.gen_local_set(
@@ -121,8 +119,9 @@ impl WasmGenState {
             ast::Stmt::Expr(expr) => {
                 self.gen_expr(func, expr);
 
-                // TODO: *all* expressions must generate some return value,
-                //       even if it's nil. Therefore, they must all be dropped.
+                // *all* expressions must generate some return value, even if
+                // it's nil. Therefore, they must all be dropped.
+                func.body.extend(wasm::binary::DROP);
             }
         }
     }
@@ -185,7 +184,7 @@ impl WasmGenState {
     }
 
     fn gen_expr(&mut self, func: &mut wasm::Func, expr: ast::Expr) {
-        // TODO: all expressions must return some value, even if it is nil.
+        // NOTE: all expressions must return some value, even if it is nil.
         match expr {
             ast::Expr::Block(block) => {
                 for stmt in block.stmts {
@@ -194,6 +193,8 @@ impl WasmGenState {
 
                 if let Some(return_expr) = block.return_expr {
                     self.gen_expr(func, *return_expr);
+                } else {
+                    self.gen_boxed_nil(func);
                 }
             }
             ast::Expr::Call(call) => {
@@ -232,15 +233,17 @@ impl WasmGenState {
                 self.gen_expr(func, ast::Expr::Block(if_expr.then_block));
 
                 // Generate else block
-                if let Some(else_block) = if_expr.else_block {
-                    func.body.extend(wasm::binary::ELSE);
+                func.body.extend(wasm::binary::ELSE);
 
+                if let Some(else_block) = if_expr.else_block {
                     match else_block {
                         ast::ElseBlock::ElseIf(if_expr) => {
                             self.gen_expr(func, ast::Expr::If(if_expr))
                         }
                         ast::ElseBlock::Else(block) => self.gen_expr(func, ast::Expr::Block(block)),
                     }
+                } else {
+                    self.gen_boxed_nil(func);
                 }
 
                 func.body.extend(wasm::binary::END);
@@ -333,10 +336,7 @@ impl WasmGenState {
                         }),
                     );
                 }
-                ast::Literal::Nil => func.gen_box(
-                    self.mem_store.alloc(wasm::BoxType::Nil),
-                    [|func: &mut wasm::Func| func.body.extend([wasm::binary::CONST_I32, 0b0])],
-                ),
+                ast::Literal::Nil => self.gen_boxed_nil(func),
             },
             ast::Expr::Identifier(identifier) => func.gen_stack_get(
                 &identifier
@@ -344,6 +344,13 @@ impl WasmGenState {
                     .expect(&format!("location resolved for ident, {}", identifier.name)),
             ),
         }
+    }
+
+    fn gen_boxed_nil(&mut self, func: &mut wasm::Func) {
+        func.gen_box(
+            self.mem_store.alloc(wasm::BoxType::Nil),
+            [|func: &mut wasm::Func| func.body.extend([wasm::binary::CONST_I32, 0b0])],
+        )
     }
 }
 
