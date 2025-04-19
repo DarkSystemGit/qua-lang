@@ -395,22 +395,34 @@ pub struct Func {
 }
 
 impl Func {
-    pub fn new<I: IntoIterator<Item = MemPtr>>(ty: TypeIdx, num_args: u32, upvalues: I) -> Self
-    where
-        I::IntoIter: DoubleEndedIterator + ExactSizeIterator,
-    {
-        // Add one for the implicit self reference passed as the first param
-        Func::new_no_implicit_self_ref(ty, num_args + 1, upvalues)
-    }
-
-    pub fn new_no_implicit_self_ref<I: IntoIterator<Item = MemPtr>>(
+    pub fn new<I: IntoIterator<Item = MemPtr>>(
         ty: TypeIdx,
         num_args: u32,
         upvalues: I,
+        // parent_func: &mut Func,
     ) -> Self
     where
         I::IntoIter: DoubleEndedIterator + ExactSizeIterator,
     {
+        // Add one for the implicit self reference passed as the first param
+        let mut this = Func::new_base(ty, num_args + 1);
+
+        // Then upvalues
+        for (i, ptr) in upvalues.into_iter().enumerate() {
+            // ptr.gen_load(parent_func);
+            todo!("load upvalue ptr");
+
+            // `ptr` has type `BoxType::Ptr` (ie it is a pointer to a pointer)
+            this.gen_unbox(BoxType::Ptr);
+
+            let loc = ast::IdentLocation::Upvalue(ast::UpvalueIndex(i as usize));
+            this.gen_local_set(MEM_PTR_TY, Some(loc));
+        }
+
+        this
+    }
+
+    pub fn new_base(ty: TypeIdx, num_args: u32) -> Self {
         let mut this = Func {
             ty,
             locals: Vec::new(),
@@ -427,18 +439,6 @@ impl Func {
             let idx = LocalIdx(this.next_local_idx);
             this.next_local_idx += 1;
             this.stack.insert(loc, idx);
-        }
-
-        // Now the upvalues
-        for (i, ptr) in upvalues.into_iter().enumerate() {
-            this.body.extend(binary::CONST_I32);
-            this.body.extend(ptr.address);
-
-            // `ptr` has type `BoxType::Ptr` (ie it is a pointer to a pointer)
-            this.gen_unbox(BoxType::Ptr);
-
-            let loc = ast::IdentLocation::Upvalue(ast::UpvalueIndex(i as usize));
-            this.gen_local_set(MEM_PTR_TY, Some(loc));
         }
 
         this
@@ -492,7 +492,12 @@ impl Func {
     ///
     /// `[] -> [T]`
     pub fn gen_local_get(&mut self, idx: LocalIdx) {
-        assert!(idx.0 < self.next_local_idx);
+        assert!(
+            idx.0 < self.next_local_idx,
+            "tried to get local {:#?} but next_local_idx is {:#?}",
+            idx.0,
+            self.next_local_idx
+        );
         self.body.extend(binary::LOCAL_GET);
         self.body.extend(idx);
     }
@@ -516,11 +521,9 @@ impl Func {
     ) where
         I::IntoIter: ExactSizeIterator,
     {
-        let mut i: u32 = 0;
         if ptr.includes_tag_byte {
             // Write the memory location
-            self.body.extend(binary::CONST_I32);
-            self.body.extend(ptr.offset(i));
+            ptr.gen_load(self);
 
             // Write tag byte
             self.body.extend(binary::CONST_I32);
@@ -532,14 +535,11 @@ impl Func {
                 0x00u8, // Align 2^0=1
                 0x00,   // Offset 0
             ]);
-
-            i += 1;
         }
 
-        for gen_value in gen_values.into_iter() {
+        for (i, gen_value) in gen_values.into_iter().enumerate() {
             // Write the memory location
-            self.body.extend(binary::CONST_I32);
-            self.body.extend(ptr.offset(i));
+            ptr.gen_offset(self, i as u32);
 
             // Generate the value to store
             gen_value(self);
@@ -550,13 +550,10 @@ impl Func {
                 0x00u8, // Align 2^0=1
                 0x00,   // Offset 0
             ]);
-
-            i += 1;
         }
 
         // Return a pointer to the memory location
-        self.body.extend(binary::CONST_I32);
-        self.body.extend([ptr]);
+        ptr.gen_load(self)
     }
 
     /// Unboxes the pointer on top of the stack and returns the value.
@@ -874,8 +871,14 @@ impl GlobalSection {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct GlobalIdx(u32);
+
+impl IntoBytes for GlobalIdx {
+    fn into_bytes(self) -> Vec<u8> {
+        self.0.into_bytes()
+    }
+}
 
 impl IntoBytes for GlobalSection {
     fn into_bytes(self) -> Vec<u8> {

@@ -59,12 +59,12 @@ impl WasmGenState {
                 results: WasmVec::new(),
             };
             let ty = module.ty_sec.insert(ty);
-            wasm::Func::new_no_implicit_self_ref(ty, 0, [])
+            wasm::Func::new_base(ty, 0)
         };
 
         let mut state = WasmGenState {
             module,
-            mem_store: MemStore::new(mem_idx),
+            mem_store: MemStore::new(mem_idx, global_mem_alloc_ptr),
         };
 
         // Add imports vars to main func.
@@ -74,7 +74,7 @@ impl WasmGenState {
             // TODO: actually track # of args + result
             let ty = wasm::FuncType::new(1, MEM_PTR_TY);
             let ty = state.module.ty_sec.insert(ty);
-            let mut func = wasm::Func::new(ty, 1, []);
+            let mut func = wasm::Func::new_base(ty, 1);
             // Assumes first arg is at index 1
             func.gen_stack_get(&ast::IdentLocation::Stack(ast::StackIndex(1)));
             func.body.extend(wasm::binary::CALL);
@@ -157,7 +157,7 @@ impl WasmGenState {
                         // The address returned is a pointer to a pointer lol.
                         // A smarter implementation could probably track the
                         // address of locals so this wouldn't be necessary.
-                        let ptr = self.mem_store.alloc(wasm::BoxType::Ptr);
+                        let ptr = self.mem_store.alloc(func, wasm::BoxType::Ptr);
                         func.gen_box(
                             ptr,
                             [|func: &mut wasm::Func| func.gen_stack_get(&upvalue.target)],
@@ -187,8 +187,9 @@ impl WasmGenState {
     fn gen_func_def(&mut self, func: &mut wasm::Func, new_func: wasm::Func) {
         let idx = self.module.funcs.insert(new_func);
         let idx = self.module.funcs.raw_func_sec_idx(idx);
+        let ptr = self.mem_store.alloc(func, wasm::BoxType::Func);
         func.gen_box(
-            self.mem_store.alloc(wasm::BoxType::Func),
+            ptr,
             [|func: &mut wasm::Func| {
                 func.body.extend(wasm::binary::CONST_I32);
                 func.body.extend(idx);
@@ -289,7 +290,8 @@ impl WasmGenState {
 
                 self.gen_expr(func, binary_expr.lhs);
 
-                func.unwrap_box(op_ty, self.mem_store.alloc(ret_ty), |func| {
+                let rebox_ptr = self.mem_store.alloc(func, ret_ty);
+                func.unwrap_box(op_ty, rebox_ptr, |func| {
                     func.gen_local_get(rhs_idx);
                     func.gen_unbox(op_ty);
 
@@ -299,46 +301,58 @@ impl WasmGenState {
             ast::Expr::Unary(unary_expr) => {
                 self.gen_expr(func, unary_expr.rhs);
                 match unary_expr.op {
-                    ast::UnaryOp::Not => func.unwrap_box(
-                        wasm::BoxType::Bool,
-                        self.mem_store.alloc(wasm::BoxType::Bool),
-                        |func|
-                            // Use XOR 0x1 as NOT
-                            // 0x0 xor 0x1 = 0x1
-                            // 0x1 xor 0x1 = 0x0
-                            func.body.extend([wasm::binary::CONST_I32, 0x1, wasm::binary::XOR_I32]),
-                    ),
-                    ast::UnaryOp::Negate => func.unwrap_box(
-                        wasm::BoxType::Num,
-                        self.mem_store.alloc(wasm::BoxType::Num),
-                        |func| func.body.extend(wasm::binary::NEG_F64),
-                    ),
+                    ast::UnaryOp::Not => {
+                        let rebox_ptr = self.mem_store.alloc(func, wasm::BoxType::Bool);
+                        func.unwrap_box(
+                                            wasm::BoxType::Bool,
+                                            rebox_ptr,
+                                            |func|
+                                                // Use XOR 0x1 as NOT
+                                                // 0x0 xor 0x1 = 0x1
+                                                // 0x1 xor 0x1 = 0x0
+                                                func.body.extend([wasm::binary::CONST_I32, 0x1, wasm::binary::XOR_I32]),
+                                        )
+                    }
+                    ast::UnaryOp::Negate => {
+                        let rebox_ptr = self.mem_store.alloc(func, wasm::BoxType::Num);
+                        func.unwrap_box(wasm::BoxType::Num, rebox_ptr, |func| {
+                            func.body.extend(wasm::binary::NEG_F64)
+                        })
+                    }
                 }
             }
             ast::Expr::Literal(literal) => match literal {
-                ast::Literal::Bool(b) => func.gen_box(
-                    self.mem_store.alloc(wasm::BoxType::Bool),
-                    [|func: &mut wasm::Func| {
-                        func.body.extend(wasm::binary::CONST_I32);
-                        func.body.extend(b);
-                    }],
-                ),
-                ast::Literal::Number(n) => func.gen_box(
-                    self.mem_store.alloc(wasm::BoxType::Num),
-                    [|func: &mut wasm::Func| {
-                        func.body.extend(wasm::binary::CONST_F64);
-                        func.body.extend(n);
-                    }],
-                ),
+                ast::Literal::Bool(b) => {
+                    let ptr = self.mem_store.alloc(func, wasm::BoxType::Bool);
+                    func.gen_box(
+                        ptr,
+                        [|func: &mut wasm::Func| {
+                            func.body.extend(wasm::binary::CONST_I32);
+                            func.body.extend(b);
+                        }],
+                    )
+                }
+                ast::Literal::Number(n) => {
+                    let ptr = self.mem_store.alloc(func, wasm::BoxType::Num);
+                    func.gen_box(
+                        ptr,
+                        [|func: &mut wasm::Func| {
+                            func.body.extend(wasm::binary::CONST_F64);
+                            func.body.extend(n);
+                        }],
+                    )
+                }
                 ast::Literal::Str(s) => {
                     // Encode as a WasmVec of UTF-8 chars
                     let mut buf = WasmVec::new();
                     buf.extend(s.into_bytes());
                     let buf = buf.into_bytes();
 
+                    let ptr = self
+                        .mem_store
+                        .alloc_n(func, wasm::BoxType::String, buf.len() as u32);
                     func.gen_box(
-                        self.mem_store
-                            .alloc_n(wasm::BoxType::String, buf.len() as u32),
+                        ptr,
                         buf.into_iter().map(|byte| {
                             // Make sure it gets encoded w/ LEB128 and not as an opcode
                             let byte = byte as i32;
@@ -360,8 +374,9 @@ impl WasmGenState {
     }
 
     fn gen_boxed_nil(&mut self, func: &mut wasm::Func) {
+        let ptr = self.mem_store.alloc(func, wasm::BoxType::Nil);
         func.gen_box(
-            self.mem_store.alloc(wasm::BoxType::Nil),
+            ptr,
             [|func: &mut wasm::Func| func.body.extend([wasm::binary::CONST_I32, 0b0])],
         )
     }
@@ -369,38 +384,58 @@ impl WasmGenState {
 
 struct MemStore {
     mem_idx: wasm::MemIdx,
-    next_idx: u32,
+    global_mem_alloc_ptr: wasm::GlobalIdx,
 }
 
 impl MemStore {
-    pub fn new(mem_idx: wasm::MemIdx) -> Self {
+    pub fn new(mem_idx: wasm::MemIdx, global_mem_alloc_ptr: wasm::GlobalIdx) -> Self {
         MemStore {
             mem_idx,
-            next_idx: 0,
+            global_mem_alloc_ptr,
         }
     }
 
     /// # Parameters:
     /// - `box_ty`: The type of the thing being allocated.
-    pub fn alloc(&mut self, box_ty: wasm::BoxType) -> MemPtr {
-        self.alloc_n(box_ty, 1)
+    pub fn alloc(&mut self, func: &mut wasm::Func, box_ty: wasm::BoxType) -> MemPtr {
+        self.alloc_n(func, box_ty, 1)
     }
 
     /// # Parameters:
     /// - `box_ty`: The type of the thing being allocated.
     /// - `n`: How many of the type are being allocated.
-    pub fn alloc_n(&mut self, box_ty: wasm::BoxType, n: u32) -> MemPtr {
-        self.alloc_raw(box_ty, n, true)
+    pub fn alloc_n(&mut self, func: &mut wasm::Func, box_ty: wasm::BoxType, n: u32) -> MemPtr {
+        self.alloc_raw(func, box_ty, n, true)
     }
 
-    pub fn alloc_raw(&mut self, box_ty: wasm::BoxType, n: u32, includes_tag_byte: bool) -> MemPtr {
+    pub fn alloc_raw(
+        &mut self,
+        func: &mut wasm::Func,
+        box_ty: wasm::BoxType,
+        n: u32,
+        includes_tag_byte: bool,
+    ) -> MemPtr {
+        // Get mem alloc ptr
+        func.body.extend(wasm::binary::GLOBAL_GET);
+        func.body.extend(self.global_mem_alloc_ptr);
+
+        // Store address to local
+        let local_idx = func.gen_local_tee(MEM_PTR_TY, None);
         let ptr = MemPtr {
-            address: self.next_idx as i32,
+            local_idx,
             box_ty,
             n,
             includes_tag_byte,
         };
-        self.next_idx += ptr.size();
+
+        // Update the global mem alloc ptr
+        // Add the size to it
+        func.body.extend(wasm::binary::CONST_I32);
+        func.body.extend(ptr.size());
+        func.body.extend(wasm::binary::ADD_I32);
+        // Update it
+        func.body.extend(wasm::binary::GLOBAL_SET);
+        func.body.extend(self.global_mem_alloc_ptr);
 
         ptr
     }
@@ -411,29 +446,44 @@ const MEM_PTR_TY: wasm::ValType = wasm::ValType::I32;
 
 #[derive(Clone, Copy, Debug)]
 pub struct MemPtr {
-    address: i32,
+    local_idx: wasm::LocalIdx,
     box_ty: wasm::BoxType,
     n: u32,
     includes_tag_byte: bool,
 }
 
 impl MemPtr {
+    // Puts the pointer onto the stack.
+    //
+    // # Stack
+    //
+    // `[] -> [MEM_PTR_TY]`
+    fn gen_load(&self, func: &mut wasm::Func) {
+        func.gen_local_get(self.local_idx);
+    }
+
+    /// Loads the ptr, offsets it, and puts it on the stack.
+    ///
+    /// # Stack
+    ///
+    /// `[] -> [MEM_PTR_TY]`
+    ///
     /// # Panics
     /// - `n` must be less than or equal to `self.n`.
-    fn offset(&self, n: u32) -> i32 {
+    fn gen_offset(&self, func: &mut wasm::Func, n: u32) {
         assert!(n <= self.n);
 
-        let offset = n as i32;
-        self.address + offset
+        func.gen_local_get(self.local_idx);
+
+        let offset = self.includes_tag_byte as u32 + self.box_ty.size() * n;
+        if offset != 0 {
+            func.body.extend(wasm::binary::CONST_I32);
+            func.body.extend(offset);
+            func.body.extend(wasm::binary::ADD_I32);
+        }
     }
 
     fn size(&self) -> u32 {
         self.box_ty.size() * self.n + if self.includes_tag_byte { 1 } else { 0 }
-    }
-}
-
-impl IntoBytes for MemPtr {
-    fn into_bytes(self) -> Vec<u8> {
-        self.address.into_bytes()
     }
 }
