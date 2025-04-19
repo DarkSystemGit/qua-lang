@@ -51,6 +51,9 @@ pub const LOCAL_GET: u8 = 0x20;
 pub const LOCAL_SET: u8 = 0x21;
 pub const LOCAL_TEE: u8 = 0x22;
 
+pub const GLOBAL_GET: u8 = 0x23;
+pub const GLOBAL_SET: u8 = 0x24;
+
 // Memory instructions
 pub const MEM_I32_LOAD: u8 = 0x28;
 pub const MEM_I32_STORE: u8 = 0x36;
