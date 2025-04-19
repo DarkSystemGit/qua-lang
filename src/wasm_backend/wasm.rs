@@ -866,6 +866,17 @@ pub struct GlobalSection {
     pub globals: WasmVec<Global>,
 }
 
+impl GlobalSection {
+    pub fn insert(&mut self, global: Global) -> GlobalIdx {
+        let next_idx = self.globals.size();
+        self.globals.extend([global]);
+        GlobalIdx(next_idx)
+    }
+}
+
+#[derive(Debug)]
+pub struct GlobalIdx(u32);
+
 impl IntoBytes for GlobalSection {
     fn into_bytes(self) -> Vec<u8> {
         binary::sec_bytes(binary::SEC_GLOBAL, self.globals)
@@ -874,9 +885,9 @@ impl IntoBytes for GlobalSection {
 
 #[derive(Debug)]
 pub struct Global {
-    ty: ValType,
-    mutable: bool,
-    init: Expr,
+    pub ty: ValType,
+    pub mutable: bool,
+    pub init: Expr,
 }
 
 impl IntoBytes for Global {

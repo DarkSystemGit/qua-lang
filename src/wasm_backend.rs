@@ -43,6 +43,16 @@ impl WasmGenState {
             limits: wasm::Limits { min: 64, max: None },
         });
 
+        let global_mem_alloc_ptr = module.globals_sec.insert(wasm::Global {
+            ty: MEM_PTR_TY,
+            mutable: true,
+            init: {
+                let mut expr = wasm::binary::Expr::new();
+                expr.extend([wasm::binary::CONST_I32, 0x00]);
+                expr
+            },
+        });
+
         let mut main_func = {
             let ty = wasm::FuncType {
                 params: WasmVec::new(),
