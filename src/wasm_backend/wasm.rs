@@ -16,6 +16,7 @@ pub struct Module {
     pub funcs: Functions,
     pub table_sec: Option<TableSection>,
     pub mem_sec: MemorySection,
+    pub globals_sec: GlobalSection,
     pub export_sec: Option<ExportSection>,
     pub start_sec: Option<StartSection>,
     pub elem_sec: Option<ElemSection>,
@@ -51,6 +52,7 @@ impl IntoBytes for Module {
         buf.extend(func_sec.into_bytes());
         buf.extend(self.table_sec.into_bytes());
         buf.extend(self.mem_sec.into_bytes());
+        buf.extend(self.globals_sec.into_bytes());
         buf.extend(self.export_sec.into_bytes());
         buf.extend(self.start_sec.into_bytes());
         buf.extend(self.elem_sec.into_bytes());
@@ -855,6 +857,33 @@ impl IntoBytes for Limits {
             buf.extend(max.into_bytes());
         }
 
+        buf
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct GlobalSection {
+    pub globals: WasmVec<Global>,
+}
+
+impl IntoBytes for GlobalSection {
+    fn into_bytes(self) -> Vec<u8> {
+        binary::sec_bytes(binary::SEC_GLOBAL, self.globals)
+    }
+}
+
+#[derive(Debug)]
+pub struct Global {
+    ty: ValType,
+    mutable: bool,
+    init: Expr,
+}
+
+impl IntoBytes for Global {
+    fn into_bytes(self) -> Vec<u8> {
+        let mut buf = self.ty.into_bytes();
+        buf.extend(self.mutable.into_bytes());
+        buf.extend(self.init.into_bytes());
         buf
     }
 }
