@@ -261,3 +261,18 @@ impl<T: IntoBytes> IntoBytes for Option<T> {
         }
     }
 }
+
+impl IntoBytes for Vec<u8> {
+    fn into_bytes(self) -> Vec<u8> {
+        self
+    }
+}
+
+impl<T1: IntoBytes, T2: IntoBytes> IntoBytes for (T1, T2) {
+    fn into_bytes(self) -> Vec<u8> {
+        let mut buf = Vec::new();
+        buf.extend(self.0.into_bytes());
+        buf.extend(self.1.into_bytes());
+        buf
+    }
+}
