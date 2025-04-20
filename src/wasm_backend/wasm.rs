@@ -906,14 +906,24 @@ pub struct GlobalSection {
 }
 
 impl GlobalSection {
-    pub fn insert(&mut self, global: Global) -> GlobalIdx {
-        let next_idx = self.globals.size();
+    pub fn insert(
+        &mut self,
+        global: Global,
+        dbg_info: Option<(&mut NameSection, Name)>,
+    ) -> GlobalIdx {
+        let idx = GlobalIdx(self.globals.size());
+
         self.globals.extend([global]);
-        GlobalIdx(next_idx)
+
+        if let Some((name_sec, name)) = dbg_info {
+            name_sec.global(idx, name);
+        }
+
+        idx
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct GlobalIdx(u32);
 
 impl IntoBytes for GlobalIdx {
@@ -1015,8 +1025,9 @@ impl IntoBytes for ExportDesc {
 #[derive(Default)]
 pub struct NameSection {
     module: Option<Name>,
-    funcs: NameMap<FuncIdx, Name>,
-    locals: NameMap<FuncIdx, NameMap<LocalIdx, Name>>,
+    funcs: NameMap<FuncIdx>,
+    locals: NameMap<FuncIdx, NameMap<LocalIdx>>,
+    globals: NameMap<GlobalIdx>,
 }
 
 impl NameSection {
@@ -1032,6 +1043,10 @@ impl NameSection {
         let map = self.locals.entry(func_idx).or_default();
         map.insert(local_idx, name);
     }
+
+    pub fn global(&mut self, idx: GlobalIdx, name: Name) {
+        self.globals.insert(idx, name);
+    }
 }
 
 impl IntoBytes for NameSection {
@@ -1041,19 +1056,21 @@ impl IntoBytes for NameSection {
         const SUBSEC_MODULE: u8 = 0x00;
         const SUBSEC_FUNCS: u8 = 0x01;
         const SUBSEC_LOCALS: u8 = 0x02;
+        const SUBSEC_GLOBALS: u8 = 0x07; // See <https://github.com/WebAssembly/extended-name-section/blob/main/proposals/extended-name-section/Overview.md#global-names>
 
         if let Some(module) = self.module {
             buf.extend(binary::sec_bytes(SUBSEC_MODULE, module));
         }
         buf.extend(binary::sec_bytes(SUBSEC_FUNCS, self.funcs));
         buf.extend(binary::sec_bytes(SUBSEC_LOCALS, self.locals));
+        buf.extend(binary::sec_bytes(SUBSEC_GLOBALS, self.globals));
 
         binary::sec_bytes(binary::SEC_CUSTOM, buf)
     }
 }
 
 #[derive(Debug)]
-pub struct NameMap<K, V> {
+pub struct NameMap<K, V = Name> {
     assoc: HashMap<K, V>,
 }
 
