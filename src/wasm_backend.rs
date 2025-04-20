@@ -74,14 +74,14 @@ impl WasmGenState {
             // TODO: actually track # of args + result
             let ty = wasm::FuncType::new(1, MEM_PTR_TY);
             let ty = state.module.ty_sec.insert(ty);
-            let mut func = wasm::Func::new_base(ty, 1);
+            let mut func = wasm::Func::new_base(ty, 1 + 1);
             // Assumes first arg is at index 1
             func.gen_stack_get(&ast::IdentLocation::Stack(ast::StackIndex(1)));
             func.body.extend(wasm::binary::CALL);
             func.body.extend(i as u32);
             state.gen_boxed_nil(&mut func);
 
-            state.gen_func_def(&mut main_func, func);
+            state.gen_func_def(&mut main_func, func, []);
             main_func.gen_local_set(
                 MEM_PTR_TY,
                 // Assumes that the imports are in order in the ast stack
@@ -150,28 +150,12 @@ impl WasmGenState {
             } => {
                 let ty = wasm::FuncType::new(arguments.len(), MEM_PTR_TY);
                 let ty = self.module.ty_sec.insert(ty);
-                let mut new_func = {
-                    // Put upvalues on the stack
-                    let upvalues = upvalues.iter().map(|upvalue| {
-                        // Store the pointer in memory.
-                        // The address returned is a pointer to a pointer lol.
-                        // A smarter implementation could probably track the
-                        // address of locals so this wouldn't be necessary.
-                        let ptr = self.mem_store.alloc(func, wasm::BoxType::Ptr);
-                        func.gen_box(
-                            ptr,
-                            [|func: &mut wasm::Func| func.gen_stack_get(&upvalue.target)],
-                        );
-                        func.body.extend(wasm::binary::DROP);
-                        ptr
-                    });
-
-                    wasm::Func::new(ty, arguments.len() as u32, upvalues)
-                };
+                let mut new_func =
+                    wasm::Func::new(ty, arguments.len() as u32, upvalues.len() as u32);
 
                 self.gen_expr(&mut new_func, binding.value);
 
-                self.gen_func_def(func, new_func);
+                self.gen_func_def(func, new_func, upvalues);
             }
         }
 
@@ -184,16 +168,47 @@ impl WasmGenState {
         );
     }
 
-    fn gen_func_def(&mut self, func: &mut wasm::Func, new_func: wasm::Func) {
+    fn gen_func_def<I: IntoIterator<Item = ast::Upvalue>>(
+        &mut self,
+        func: &mut wasm::Func,
+        new_func: wasm::Func,
+        upvalues: I,
+    ) where
+        I::IntoIter: ExactSizeIterator,
+    {
+        let upvalues = upvalues.into_iter();
+        let num_upvalues = upvalues.len() as u32;
+
         let idx = self.module.funcs.insert(new_func);
         let idx = self.module.funcs.raw_func_sec_idx(idx);
-        let ptr = self.mem_store.alloc(func, wasm::BoxType::Func);
+        let ptr = self
+            .mem_store
+            .alloc_n(func, wasm::BoxType::Func, 1 + num_upvalues);
+
+        let upvalues = upvalues
+            .map(|upvalue| {
+                func.gen_stack_get(&upvalue.target);
+                func.gen_local_set(MEM_PTR_TY, None)
+            })
+            .collect::<Vec<_>>();
+        let upvalues = &upvalues;
+
         func.gen_box(
             ptr,
-            [|func: &mut wasm::Func| {
-                func.body.extend(wasm::binary::CONST_I32);
-                func.body.extend(idx);
-            }],
+            (0..=num_upvalues)
+                .map(|i| {
+                    move |func: &mut wasm::Func| match i {
+                        0 => {
+                            func.body.extend(wasm::binary::CONST_I32);
+                            func.body.extend(idx);
+                        }
+                        i => {
+                            let local_idx = upvalues[i as usize - 1];
+                            func.gen_local_get(local_idx);
+                        }
+                    }
+                })
+                .collect::<Vec<_>>(),
         );
     }
 
@@ -480,6 +495,15 @@ impl MemPtr {
             func.body.extend(wasm::binary::CONST_I32);
             func.body.extend(offset);
             func.body.extend(wasm::binary::ADD_I32);
+        }
+    }
+
+    const fn func_self_ref(num_upvalues: u32) -> Self {
+        MemPtr {
+            local_idx: wasm::LocalIdx::FUNC_SELF_REF,
+            box_ty: wasm::BoxType::Func,
+            n: 1 + num_upvalues,
+            includes_tag_byte: true,
         }
     }
 

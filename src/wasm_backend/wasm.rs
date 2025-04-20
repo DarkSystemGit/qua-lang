@@ -395,26 +395,21 @@ pub struct Func {
 }
 
 impl Func {
-    pub fn new<I: IntoIterator<Item = MemPtr>>(
-        ty: TypeIdx,
-        num_args: u32,
-        upvalues: I,
-        // parent_func: &mut Func,
-    ) -> Self
-    where
-        I::IntoIter: DoubleEndedIterator + ExactSizeIterator,
-    {
+    pub fn new(ty: TypeIdx, num_args: u32, num_upvalues: u32) -> Self {
         // Add one for the implicit self reference passed as the first param
         let mut this = Func::new_base(ty, num_args + 1);
 
-        // Then upvalues
-        for (i, ptr) in upvalues.into_iter().enumerate() {
-            // ptr.gen_load(parent_func);
-            todo!("load upvalue ptr");
+        // Load upvalues
+        // The base ptr is stored in the boxed self ptr
+        let self_ptr = MemPtr::func_self_ref(num_upvalues);
+        // Start at 1 b/c the func index is first
+        for offset in 1..=num_upvalues {
+            self_ptr.gen_offset(&mut this, offset);
 
             // `ptr` has type `BoxType::Ptr` (ie it is a pointer to a pointer)
-            this.gen_unbox(BoxType::Ptr);
+            this.gen_unbox_no_tag(BoxType::Ptr);
 
+            let i = offset - 1;
             let loc = ast::IdentLocation::Upvalue(ast::UpvalueIndex(i as usize));
             this.gen_local_set(MEM_PTR_TY, Some(loc));
         }
@@ -583,6 +578,12 @@ impl Func {
 
         // Add one to ignore the tag byte
         self.body.extend([binary::CONST_I32, 0x01, binary::ADD_I32]);
+        self.gen_unbox_no_tag(box_ty);
+    }
+
+    /// Reads the pointer on top of the stack, when the pointer is pointing to
+    /// the actual data and not the tag byte.
+    pub fn gen_unbox_no_tag(&mut self, box_ty: BoxType) {
         // Actually load the data
         self.body.extend(box_ty.instr_load());
         self.body.extend([
@@ -642,6 +643,9 @@ impl IntoBytes for Local {
 
 #[derive(Clone, Copy, Debug)]
 pub struct LocalIdx(u32);
+impl LocalIdx {
+    pub const FUNC_SELF_REF: Self = LocalIdx(0);
+}
 impl IntoBytes for LocalIdx {
     fn into_bytes(self) -> Vec<u8> {
         self.0.into_bytes()
