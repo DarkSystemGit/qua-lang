@@ -70,7 +70,7 @@ impl WasmGenState {
         // Add imports vars to main func.
         // Assumes that import indexes are in order (`.enumerate()`), and that
         // new imports will not be added after/during this loop (`.clone()`).
-        for (i, _) in state.module.funcs.imports().clone().iter().enumerate() {
+        for (i, import) in state.module.funcs.imports().clone().iter().enumerate() {
             // TODO: actually track # of args + result
             let ty = wasm::FuncType::new(1, MEM_PTR_TY);
             let ty = state.module.ty_sec.insert(ty);
@@ -81,11 +81,12 @@ impl WasmGenState {
             func.body.extend(i as u32);
             state.gen_boxed_nil(&mut func);
 
-            state.gen_func_def(&mut main_func, func, []);
+            state.gen_func_def(&mut main_func, func, [], Some(import.dbg_name()));
             main_func.gen_local_set(
                 MEM_PTR_TY,
                 // Assumes that the imports are in order in the ast stack
                 Some(ast::IdentLocation::Stack(ast::StackIndex(i))),
+                Some(import.dbg_name()),
             );
         }
 
@@ -95,7 +96,11 @@ impl WasmGenState {
 
     fn finish(mut self, func: wasm::Func) -> Vec<u8> {
         // Set up main function
-        let main_idx = self.module.funcs.insert(func);
+        let main_idx = self.module.funcs.insert(
+            func,
+            &mut self.module.name_sec,
+            Some(wasm::Name("<main>".to_string())),
+        );
 
         // let start_sec = wasm::StartSection { func: idx };
         // self.module.start_sec = Some(start_sec);
@@ -140,6 +145,7 @@ impl WasmGenState {
     }
 
     fn gen_binding(&mut self, func: &mut wasm::Func, binding: ast::Binding) {
+        let dbg_name = Some(wasm::Name(binding.ident.name.clone()));
         match binding.metadata {
             ast::BindingMetadata::Var => {
                 self.gen_expr(func, binding.value);
@@ -150,12 +156,11 @@ impl WasmGenState {
             } => {
                 let ty = wasm::FuncType::new(arguments.len(), MEM_PTR_TY);
                 let ty = self.module.ty_sec.insert(ty);
-                let mut new_func =
-                    wasm::Func::new(ty, arguments.len() as u32, upvalues.len() as u32);
+                let mut new_func = wasm::Func::new(ty, arguments.len() as u32, upvalues.as_slice());
 
                 self.gen_expr(&mut new_func, binding.value);
 
-                self.gen_func_def(func, new_func, upvalues);
+                self.gen_func_def(func, new_func, upvalues, dbg_name.clone());
             }
         }
 
@@ -165,6 +170,7 @@ impl WasmGenState {
                 "location resolved for ident, {}",
                 binding.ident.name
             ))),
+            dbg_name,
         );
     }
 
@@ -173,13 +179,17 @@ impl WasmGenState {
         func: &mut wasm::Func,
         new_func: wasm::Func,
         upvalues: I,
+        dbg_name: Option<wasm::Name>,
     ) where
         I::IntoIter: ExactSizeIterator,
     {
         let upvalues = upvalues.into_iter();
         let num_upvalues = upvalues.len() as u32;
 
-        let idx = self.module.funcs.insert(new_func);
+        let idx = self
+            .module
+            .funcs
+            .insert(new_func, &mut self.module.name_sec, dbg_name);
         let idx = self.module.funcs.raw_func_sec_idx(idx);
         let ptr = self
             .mem_store
@@ -188,7 +198,7 @@ impl WasmGenState {
         let upvalues = upvalues
             .map(|upvalue| {
                 func.gen_stack_get(&upvalue.target);
-                func.gen_local_set(MEM_PTR_TY, None)
+                func.gen_local_set(MEM_PTR_TY, None, Some(wasm::Name(upvalue.dbg_name)))
             })
             .collect::<Vec<_>>();
         let upvalues = &upvalues;
@@ -232,7 +242,7 @@ impl WasmGenState {
                         // Put arguments onto the stack
                         // Start with self reference
                         self.gen_expr(func, expr);
-                        let target_idx = func.gen_local_tee(MEM_PTR_TY, None);
+                        let target_idx = func.gen_local_tee(MEM_PTR_TY, None, None);
                         // Then the real args
                         // Save this before call.arguments is consumed in the for loop
                         let num_args = call.arguments.len();
@@ -301,7 +311,7 @@ impl WasmGenState {
                 };
 
                 self.gen_expr(func, binary_expr.rhs);
-                let rhs_idx = func.gen_local_set(MEM_PTR_TY, None);
+                let rhs_idx = func.gen_local_set(MEM_PTR_TY, None, None);
 
                 self.gen_expr(func, binary_expr.lhs);
 
@@ -435,7 +445,7 @@ impl MemStore {
         func.body.extend(self.global_mem_alloc_ptr);
 
         // Store address to local
-        let local_idx = func.gen_local_tee(MEM_PTR_TY, None);
+        let local_idx = func.gen_local_tee(MEM_PTR_TY, None, None);
         let ptr = MemPtr {
             local_idx,
             box_ty,

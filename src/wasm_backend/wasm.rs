@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+};
 
 use binary::{Expr, IntoBytes, WasmVec};
 
@@ -20,6 +23,7 @@ pub struct Module {
     pub export_sec: Option<ExportSection>,
     pub start_sec: Option<StartSection>,
     pub elem_sec: Option<ElemSection>,
+    pub name_sec: NameSection,
 }
 
 impl IntoBytes for Module {
@@ -34,6 +38,7 @@ impl IntoBytes for Module {
                      locals,
                      body,
 
+                     local_dbg_names: _,
                      next_local_idx: _,
                      stack: _,
                  }| (ty, FuncCode::from((locals, body))),
@@ -57,6 +62,7 @@ impl IntoBytes for Module {
         buf.extend(self.start_sec.into_bytes());
         buf.extend(self.elem_sec.into_bytes());
         buf.extend(code_sec.into_bytes());
+        buf.extend(self.name_sec.into_bytes());
         buf
     }
 }
@@ -311,8 +317,21 @@ impl Functions {
         FuncIdx((self.imports.len() + self.funcs.len()) as u32)
     }
 
-    pub fn insert(&mut self, func: Func) -> FuncIdx {
+    pub fn insert(
+        &mut self,
+        func: Func,
+        name_sec: &mut NameSection,
+        dbg_name: Option<Name>,
+    ) -> FuncIdx {
         let idx = self.next_idx();
+        // Add debug info
+        if let Some(name) = dbg_name {
+            name_sec.func(idx, name);
+        }
+        for (local_idx, name) in &func.local_dbg_names {
+            name_sec.local(idx, *local_idx, name.clone());
+        }
+
         self.funcs.push(func);
         idx
     }
@@ -345,7 +364,7 @@ impl Functions {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct FuncIdx(u32);
 
 impl IntoBytes for FuncIdx {
@@ -359,6 +378,12 @@ pub struct FuncImport {
     pub module: Name,
     pub name: Name,
     pub ty: TypeIdx,
+}
+
+impl FuncImport {
+    pub fn dbg_name(&self) -> Name {
+        Name(format!("{}.{}", self.module.0, self.name.0))
+    }
 }
 
 impl IntoBytes for FuncImport {
@@ -375,7 +400,7 @@ impl IntoBytes for FuncImport {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub struct Name(pub String);
 impl IntoBytes for Name {
     fn into_bytes(self) -> Vec<u8> {
@@ -388,6 +413,7 @@ pub struct Func {
     pub ty: TypeIdx,
 
     locals: Vec<Local>,
+    local_dbg_names: HashMap<LocalIdx, Name>,
     next_local_idx: u32,
     stack: HashMap<ast::IdentLocation, LocalIdx>,
 
@@ -395,15 +421,15 @@ pub struct Func {
 }
 
 impl Func {
-    pub fn new(ty: TypeIdx, num_args: u32, num_upvalues: u32) -> Self {
+    pub fn new(ty: TypeIdx, num_args: u32, upvalues: &[ast::Upvalue]) -> Self {
         // Add one for the implicit self reference passed as the first param
         let mut this = Func::new_base(ty, num_args + 1);
 
         // Load upvalues
         // The base ptr is stored in the boxed self ptr
-        let self_ptr = MemPtr::func_self_ref(num_upvalues);
+        let self_ptr = MemPtr::func_self_ref(upvalues.len() as u32);
         // Start at 1 b/c the func index is first
-        for offset in 1..=num_upvalues {
+        for (upvalue, offset) in upvalues.into_iter().zip(1..=upvalues.len() as u32) {
             self_ptr.gen_offset(&mut this, offset);
 
             // `ptr` has type `BoxType::Ptr` (ie it is a pointer to a pointer)
@@ -411,7 +437,7 @@ impl Func {
 
             let i = offset - 1;
             let loc = ast::IdentLocation::Upvalue(ast::UpvalueIndex(i as usize));
-            this.gen_local_set(MEM_PTR_TY, Some(loc));
+            this.gen_local_set(MEM_PTR_TY, Some(loc), Some(Name(upvalue.dbg_name.clone())));
         }
 
         this
@@ -421,6 +447,7 @@ impl Func {
         let mut this = Func {
             ty,
             locals: Vec::new(),
+            local_dbg_names: HashMap::new(),
             next_local_idx: 0,
             stack: HashMap::new(),
             body: binary::Expr::new(),
@@ -439,7 +466,12 @@ impl Func {
         this
     }
 
-    pub fn insert_local(&mut self, ty: ValType, stack_loc: Option<ast::IdentLocation>) -> LocalIdx {
+    pub fn insert_local(
+        &mut self,
+        ty: ValType,
+        stack_loc: Option<ast::IdentLocation>,
+        dbg_name: Option<Name>,
+    ) -> LocalIdx {
         match self.locals.last_mut() {
             Some(local) if local.ty == ty => local.num += 1,
             Some(_) | None => self.locals.push(Local::new(ty)),
@@ -452,6 +484,10 @@ impl Func {
             self.stack.insert(stack_loc, idx);
         }
 
+        if let Some(name) = dbg_name {
+            self.local_dbg_names.insert(idx, name);
+        }
+
         idx
     }
 
@@ -462,8 +498,9 @@ impl Func {
         &mut self,
         ty: ValType,
         stack_loc: Option<ast::IdentLocation>,
+        dbg_name: Option<Name>,
     ) -> LocalIdx {
-        let idx = self.insert_local(ty, stack_loc);
+        let idx = self.insert_local(ty, stack_loc, dbg_name);
         self.body.extend(binary::LOCAL_SET);
         self.body.extend(idx);
         idx
@@ -476,8 +513,9 @@ impl Func {
         &mut self,
         ty: ValType,
         stack_loc: Option<ast::IdentLocation>,
+        dbg_name: Option<Name>,
     ) -> LocalIdx {
-        let idx = self.insert_local(ty, stack_loc);
+        let idx = self.insert_local(ty, stack_loc, dbg_name);
         self.body.extend(binary::LOCAL_TEE);
         self.body.extend(idx);
         idx
@@ -557,7 +595,7 @@ impl Func {
     pub fn gen_unbox(&mut self, box_ty: BoxType) {
         if CHECK_TYPES {
             // Save address to local
-            let ptr_idx = self.gen_local_tee(MEM_PTR_TY, None);
+            let ptr_idx = self.gen_local_tee(MEM_PTR_TY, None, None);
 
             self.body.extend(binary::MEM_I32_LOAD_8U);
             self.body.extend([
@@ -610,7 +648,7 @@ impl Func {
         self.gen_unbox(unbox_ty);
 
         func(self);
-        let res_idx = self.gen_local_set(rebox_ptr.box_ty.into(), None);
+        let res_idx = self.gen_local_set(rebox_ptr.box_ty.into(), None, None);
 
         self.gen_box(
             rebox_ptr,
@@ -641,7 +679,7 @@ impl IntoBytes for Local {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub struct LocalIdx(u32);
 impl LocalIdx {
     pub const FUNC_SELF_REF: Self = LocalIdx(0);
@@ -971,5 +1009,82 @@ impl IntoBytes for ExportDesc {
         let mut buf = vec![discriminant];
         buf.extend(contents);
         buf
+    }
+}
+
+#[derive(Default)]
+pub struct NameSection {
+    module: Option<Name>,
+    funcs: NameMap<FuncIdx, Name>,
+    locals: NameMap<FuncIdx, NameMap<LocalIdx, Name>>,
+}
+
+impl NameSection {
+    pub fn module(&mut self, name: Name) {
+        self.module = Some(name);
+    }
+
+    pub fn func(&mut self, idx: FuncIdx, name: Name) {
+        self.funcs.insert(idx, name);
+    }
+
+    pub fn local(&mut self, func_idx: FuncIdx, local_idx: LocalIdx, name: Name) {
+        let map = self.locals.entry(func_idx).or_default();
+        map.insert(local_idx, name);
+    }
+}
+
+impl IntoBytes for NameSection {
+    fn into_bytes(self) -> Vec<u8> {
+        let mut buf = Name("name".to_string()).into_bytes();
+
+        const SUBSEC_MODULE: u8 = 0x00;
+        const SUBSEC_FUNCS: u8 = 0x01;
+        const SUBSEC_LOCALS: u8 = 0x02;
+
+        if let Some(module) = self.module {
+            buf.extend(binary::sec_bytes(SUBSEC_MODULE, module));
+        }
+        buf.extend(binary::sec_bytes(SUBSEC_FUNCS, self.funcs));
+        buf.extend(binary::sec_bytes(SUBSEC_LOCALS, self.locals));
+
+        binary::sec_bytes(binary::SEC_CUSTOM, buf)
+    }
+}
+
+#[derive(Debug)]
+pub struct NameMap<K, V> {
+    assoc: HashMap<K, V>,
+}
+
+impl<K: IntoBytes + Ord, V: IntoBytes> IntoBytes for NameMap<K, V> {
+    fn into_bytes(self) -> Vec<u8> {
+        let mut assoc = self.assoc.into_iter().collect::<Vec<(K, V)>>();
+        // indices must be in order
+        assoc.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+        // binary rep is a wasm vec
+        assoc.into_iter().collect::<WasmVec<(K, V)>>().into_bytes()
+    }
+}
+
+impl<K, V> Deref for NameMap<K, V> {
+    type Target = HashMap<K, V>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.assoc
+    }
+}
+impl<K, V> DerefMut for NameMap<K, V> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.assoc
+    }
+}
+
+impl<K, V> Default for NameMap<K, V> {
+    fn default() -> Self {
+        NameMap {
+            assoc: HashMap::default(),
+        }
     }
 }
