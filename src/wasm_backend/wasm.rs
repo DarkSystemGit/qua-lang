@@ -421,9 +421,20 @@ pub struct Func {
 }
 
 impl Func {
-    pub fn new(ty: TypeIdx, num_args: u32, upvalues: &[ast::Upvalue]) -> Self {
-        // Add one for the implicit self reference passed as the first param
-        let mut this = Func::new_base(ty, num_args + 1);
+    pub fn new(
+        ty: TypeIdx,
+        dbg_name: Option<Name>,
+        arguments: impl IntoIterator<Item = Option<ast::Identifier>>,
+        upvalues: &[ast::Upvalue],
+    ) -> Self {
+        // Transform into Iterator<Item = Option<Name>>
+        let arguments = arguments
+            .into_iter()
+            .map(|ident| ident.map(|ident| Name(ident.name)));
+        // Add in self ref
+        let arguments = [dbg_name].into_iter().chain(arguments);
+
+        let mut this = Func::new_base(ty, arguments);
 
         // Load upvalues
         // The base ptr is stored in the boxed self ptr
@@ -443,7 +454,7 @@ impl Func {
         this
     }
 
-    pub fn new_base(ty: TypeIdx, num_args: u32) -> Self {
+    pub fn new_base(ty: TypeIdx, arguments: impl IntoIterator<Item = Option<Name>>) -> Self {
         let mut this = Func {
             ty,
             locals: Vec::new(),
@@ -456,11 +467,16 @@ impl Func {
         // First the args
         // - Don't actual make a locals entry for them, because they are
         //   implicitly declared.
-        for i in 0..num_args {
-            let loc = ast::IdentLocation::Stack(ast::StackIndex(i as usize));
+        for name in arguments {
+            let loc = ast::IdentLocation::Stack(ast::StackIndex(this.next_local_idx as usize));
             let idx = LocalIdx(this.next_local_idx);
             this.next_local_idx += 1;
+
             this.stack.insert(loc, idx);
+
+            if let Some(name) = name {
+                this.local_dbg_names.insert(idx, name);
+            }
         }
 
         this

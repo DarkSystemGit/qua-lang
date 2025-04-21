@@ -65,7 +65,7 @@ impl WasmGenState {
                 results: WasmVec::new(),
             };
             let ty = module.ty_sec.insert(ty);
-            wasm::Func::new_base(ty, 0)
+            wasm::Func::new_base(ty, [])
         };
 
         let mut state = WasmGenState {
@@ -80,7 +80,7 @@ impl WasmGenState {
             // TODO: actually track # of args + result
             let ty = wasm::FuncType::new(1, MEM_PTR_TY);
             let ty = state.module.ty_sec.insert(ty);
-            let mut func = wasm::Func::new_base(ty, 1 + 1);
+            let mut func = wasm::Func::new(ty, Some(import.dbg_name()), [None], &[]);
             // Assumes first arg is at index 1
             func.gen_stack_get(&ast::IdentLocation::Stack(ast::StackIndex(1)));
             func.body.extend(wasm::binary::CALL);
@@ -162,7 +162,12 @@ impl WasmGenState {
             } => {
                 let ty = wasm::FuncType::new(arguments.len(), MEM_PTR_TY);
                 let ty = self.module.ty_sec.insert(ty);
-                let mut new_func = wasm::Func::new(ty, arguments.len() as u32, upvalues.as_slice());
+                let mut new_func = wasm::Func::new(
+                    ty,
+                    dbg_name.clone(),
+                    arguments.into_iter().map(Some),
+                    upvalues.as_slice(),
+                );
 
                 self.gen_expr(&mut new_func, binding.value);
 
