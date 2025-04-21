@@ -340,15 +340,13 @@ impl WasmGenState {
                 match unary_expr.op {
                     ast::UnaryOp::Not => {
                         let rebox_ptr = self.mem_store.alloc(func, wasm::BoxType::Bool);
-                        func.unwrap_box(
-                                            wasm::BoxType::Bool,
-                                            rebox_ptr,
-                                            |func|
-                                                // Use XOR 0x1 as NOT
-                                                // 0x0 xor 0x1 = 0x1
-                                                // 0x1 xor 0x1 = 0x0
-                                                func.body.extend([wasm::binary::CONST_I32, 0x1, wasm::binary::XOR_I32]),
-                                        )
+                        func.unwrap_box(wasm::BoxType::Bool, rebox_ptr, |func| {
+                            // Use XOR 0x1 as NOT
+                            // 0x0 xor 0x1 = 0x1
+                            // 0x1 xor 0x1 = 0x0
+                            func.body
+                                .extend([wasm::binary::CONST_I32, 0x1, wasm::binary::XOR_I32])
+                        })
                     }
                     ast::UnaryOp::Negate => {
                         let rebox_ptr = self.mem_store.alloc(func, wasm::BoxType::Num);
