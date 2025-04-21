@@ -111,7 +111,7 @@ pub struct FuncType {
 }
 
 impl FuncType {
-    pub fn new<'a>(num_args: usize, result_ty: ValType) -> Self {
+    pub fn new(num_args: usize, result_ty: ValType) -> Self {
         let mut params = WasmVec::new();
         params.extend([MEM_PTR_TY]); // self ref
         params.extend(vec![MEM_PTR_TY; num_args]);
@@ -440,7 +440,7 @@ impl Func {
         // The base ptr is stored in the boxed self ptr
         let self_ptr = MemPtr::func_self_ref(upvalues.len() as u32);
         // Start at 1 b/c the func index is first
-        for (upvalue, offset) in upvalues.into_iter().zip(1..=upvalues.len() as u32) {
+        for (upvalue, offset) in upvalues.iter().zip(1..=upvalues.len() as u32) {
             self_ptr.gen_offset(&mut this, offset);
 
             // `ptr` has type `BoxType::Ptr` (ie it is a pointer to a pointer)
@@ -555,7 +555,7 @@ impl Func {
         let idx = *self
             .stack
             .get(stack_loc)
-            .expect(&format!("stack location should be valid {stack_loc:?}"));
+            .unwrap_or_else(|| panic!("stack location should be valid {stack_loc:?}"));
         self.gen_local_get(idx);
     }
 

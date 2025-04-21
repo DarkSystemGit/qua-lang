@@ -177,10 +177,11 @@ impl WasmGenState {
 
         func.gen_local_set(
             MEM_PTR_TY,
-            Some(binding.ident.location.expect(&format!(
-                "location resolved for ident, {}",
-                binding.ident.name
-            ))),
+            Some(
+                binding.ident.location.unwrap_or_else(|| {
+                    panic!("location resolved for ident, {}", binding.ident.name)
+                }),
+            ),
             dbg_name,
         );
     }
@@ -248,30 +249,27 @@ impl WasmGenState {
                 }
             }
             ast::Expr::Call(call) => {
-                match *call.target {
-                    expr => {
-                        // Put arguments onto the stack
-                        // Start with self reference
-                        self.gen_expr(func, expr);
-                        let target_idx = func.gen_local_tee(MEM_PTR_TY, None, None);
-                        // Then the real args
-                        // Save this before call.arguments is consumed in the for loop
-                        let num_args = call.arguments.len();
-                        for arg in call.arguments {
-                            self.gen_expr(func, arg);
-                        }
-
-                        func.gen_local_get(target_idx);
-                        func.gen_unbox(wasm::BoxType::Func);
-                        func.body.extend(wasm::binary::CALL_INDIRECT);
-                        func.body.extend(
-                            self.module
-                                .ty_sec
-                                .insert(wasm::FuncType::new(num_args, MEM_PTR_TY)),
-                        );
-                        func.body.extend(0x00);
-                    }
+                // Put arguments onto the stack
+                // Start with self reference
+                self.gen_expr(func, *call.target);
+                let target_idx = func.gen_local_tee(MEM_PTR_TY, None, None);
+                // Then the real args
+                // Save this before call.arguments is consumed in the for loop
+                let num_args = call.arguments.len();
+                for arg in call.arguments {
+                    self.gen_expr(func, arg);
                 }
+
+                // Actually call the function
+                func.gen_local_get(target_idx);
+                func.gen_unbox(wasm::BoxType::Func);
+                func.body.extend(wasm::binary::CALL_INDIRECT);
+                func.body.extend(
+                    self.module
+                        .ty_sec
+                        .insert(wasm::FuncType::new(num_args, MEM_PTR_TY)),
+                );
+                func.body.extend(0x00); // Last arg to CALL_INDIRECT (the index of the table)
             }
             ast::Expr::If(if_expr) => {
                 self.gen_expr(func, if_expr.condition);
@@ -403,7 +401,7 @@ impl WasmGenState {
             ast::Expr::Identifier(identifier) => func.gen_stack_get(
                 &identifier
                     .location
-                    .expect(&format!("location resolved for ident, {}", identifier.name)),
+                    .unwrap_or_else(|| panic!("location resolved for ident, {}", identifier.name)),
             ),
         }
     }
