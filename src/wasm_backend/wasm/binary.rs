@@ -1,3 +1,8 @@
+#![expect(
+    dead_code,
+    reason = "not every feature of wasm is used in the compiler"
+)]
+
 use std::marker::PhantomData;
 
 pub const MAGIC_NUM: [u8; 4] = *b"\0asm";

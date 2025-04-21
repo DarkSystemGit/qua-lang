@@ -134,6 +134,7 @@ impl IntoBytes for FuncType {
     }
 }
 
+#[expect(unused, reason = "not all value types are used in the compiler")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ValType {
     I32,
@@ -753,6 +754,7 @@ impl IntoBytes for TableType {
     }
 }
 
+#[expect(unused, reason = "not all ref types are used in the compiler")]
 #[derive(Debug, PartialEq, Eq)]
 pub enum RefType {
     Func,
@@ -1047,6 +1049,7 @@ pub struct NameSection {
 }
 
 impl NameSection {
+    #[expect(unused, reason = "module doesn't need to be named")]
     pub fn module(&mut self, name: Name) {
         self.module = Some(name);
     }
