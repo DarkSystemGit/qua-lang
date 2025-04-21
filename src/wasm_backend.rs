@@ -301,7 +301,8 @@ impl WasmGenState {
             ast::Expr::Binary(binary_expr) => {
                 let (op_ty, ret_ty, instrs) = {
                     use wasm::binary::{
-                        ADD_F64, AND_I32, DIV_F64, EQ_F64, MUL_F64, NE_F64, OR_I32, SUB_F64,
+                        ADD_F64, AND_I32, DIV_F64, EQ_F64, GE_F64, GT_F64, LE_F64, LT_F64, MUL_F64,
+                        NE_F64, OR_I32, SUB_F64,
                     };
                     use wasm::BoxType::{Bool, Num};
 
@@ -310,10 +311,10 @@ impl WasmGenState {
                         ast::BinaryOp::And => (Bool, Bool, AND_I32),
                         ast::BinaryOp::NotEq => (Num, Bool, NE_F64),
                         ast::BinaryOp::Eq => (Num, Bool, EQ_F64),
-                        ast::BinaryOp::Greater => todo!(),
-                        ast::BinaryOp::GreaterEq => todo!(),
-                        ast::BinaryOp::Less => todo!(),
-                        ast::BinaryOp::LessEq => todo!(),
+                        ast::BinaryOp::Greater => (Num, Bool, GT_F64),
+                        ast::BinaryOp::GreaterEq => (Num, Bool, GE_F64),
+                        ast::BinaryOp::Less => (Num, Bool, LT_F64),
+                        ast::BinaryOp::LessEq => (Num, Bool, LE_F64),
                         ast::BinaryOp::Subtract => (Num, Num, SUB_F64),
                         ast::BinaryOp::Add => (Num, Num, ADD_F64),
                         ast::BinaryOp::Divide => (Num, Num, DIV_F64),

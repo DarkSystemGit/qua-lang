@@ -89,6 +89,10 @@ pub const NE_I32: u8 = 0x47;
 
 pub const EQ_F64: u8 = 0x61;
 pub const NE_F64: u8 = 0x62;
+pub const LT_F64: u8 = 0x63;
+pub const GT_F64: u8 = 0x64;
+pub const LE_F64: u8 = 0x65;
+pub const GE_F64: u8 = 0x66;
 
 // Boolean
 pub const AND_I32: u8 = 0x71;
