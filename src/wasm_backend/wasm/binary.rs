@@ -49,6 +49,8 @@ pub const ELSE: u8 = 0x05;
 pub const END: u8 = 0x0B;
 pub const CALL: u8 = 0x10;
 pub const CALL_INDIRECT: u8 = 0x11;
+pub const RETURN_CALL: u8 = 0x12;
+pub const RETURN_CALL_INDIRECT: u8 = 0x13;
 pub const DROP: u8 = 0x1A;
 
 // Variable instructions
