@@ -2,7 +2,7 @@ mod env;
 mod tce;
 
 pub use env::Env;
-use tce::MarkTailCalls;
+use tce::mark_tail_calls;
 
 use crate::{
     ast::{
@@ -16,7 +16,7 @@ use crate::{
 /// A ancestor of `parent_scope` must include the stdlib.
 pub fn parse(tokens: Vec<Token>, env: &mut Env) -> Parse<Program> {
     let mut program = Parser::new(tokens).parse_program(env)?;
-    program.mark_tail_calls();
+    mark_tail_calls(&mut program);
     Ok(program)
 }
 

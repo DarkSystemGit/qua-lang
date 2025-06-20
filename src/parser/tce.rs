@@ -1,134 +1,61 @@
 use crate::ast::{
-    BinaryExpr, Binding, BindingMetadata, Block, Call, Expr, IfExpr, Program, Stmt, UnaryExpr,
+    BinaryExpr, Binding, BindingMetadata, Block, Call, ElseBlock, Expr, IfExpr, Program, Stmt,
+    UnaryExpr,
 };
 
-pub trait MarkTailCalls {
-    fn mark_tail_calls(&mut self);
+pub fn mark_tail_calls(program: &mut Program) {
+    mark_functions(program)
 }
 
-impl MarkTailCalls for Program {
-    fn mark_tail_calls(&mut self) {
-        for stmt in self {
-            stmt.mark_tail_calls();
+// Better named than `mark_tail_calls`
+fn mark_functions(stmts: &mut [Stmt]) {
+    for stmt in stmts {
+        let Stmt::Let(binding) = stmt else { return };
+        mark_binding(binding);
+    }
+}
+
+fn mark_binding(binding: &mut Binding) {
+    // Select only functions
+    let is_func = matches!(binding.metadata, BindingMetadata::Func { .. });
+    if !is_func {
+        return;
+    }
+
+    mark_expr(&mut binding.value, true);
+}
+
+/// Parameters:
+///  - `is_final`: Whether or not this is the final expression in the function.
+///    For example, the condition in an if statement is not final. However, it
+///    could still contain a function definition that needs to be scanned.
+fn mark_expr(expr: &mut Expr, is_final: bool) {
+    match expr {
+        Expr::Block(block) => mark_block(block, is_final),
+        Expr::Call(call) if is_final => call.is_tail_call = true,
+        Expr::If(if_expr) => mark_if_expr(if_expr, is_final),
+        Expr::Binary(binary_expr) => {
+            mark_expr(&mut binary_expr.lhs, false);
+            mark_expr(&mut binary_expr.rhs, false);
         }
+        Expr::Unary(unary_expr) => mark_expr(&mut unary_expr.rhs, false),
+        Expr::Literal(_) | Expr::Identifier(_) | Expr::Call(_) => {}
     }
 }
 
-impl MarkTailCalls for Stmt {
-    fn mark_tail_calls(&mut self) {
-        match self {
-            Stmt::Let(binding) => binding.mark_tail_calls(),
-            Stmt::Expr(expr) => expr.mark_tail_calls(),
-        }
+fn mark_block(block: &mut Block, is_final: bool) {
+    mark_functions(&mut block.stmts);
+    if let Some(expr) = &mut block.return_expr {
+        mark_expr(expr, is_final);
     }
 }
 
-impl MarkTailCalls for Binding {
-    fn mark_tail_calls(&mut self) {
-        let BindingMetadata::Func { .. } = &mut self.metadata else {
-            return;
-        };
-
-        let func_body = &mut self.value;
-        let tail_calls = func_body.get_tail_calls_mut();
-
-        for call in tail_calls {
-            call.is_tail_call = true;
-        }
-    }
-}
-
-impl MarkTailCalls for Expr {
-    fn mark_tail_calls(&mut self) {
-        match self {
-            Expr::Block(block) => block.mark_tail_calls(),
-            Expr::If(if_expr) => if_expr.mark_tail_calls(),
-            Expr::Binary(binary_expr) => binary_expr.mark_tail_calls(),
-            Expr::Unary(unary_expr) => unary_expr.mark_tail_calls(),
-            Expr::Call(_) => {}
-            Expr::Literal(_) => {}
-            Expr::Identifier(_) => {}
-        }
-    }
-}
-
-impl MarkTailCalls for Block {
-    fn mark_tail_calls(&mut self) {
-        for stmt in &mut self.stmts {
-            stmt.mark_tail_calls();
-        }
-        if let Some(expr) = &mut self.return_expr {
-            expr.mark_tail_calls();
-        }
-    }
-}
-
-impl MarkTailCalls for IfExpr {
-    fn mark_tail_calls(&mut self) {
-        self.then_block.mark_tail_calls();
-        if let Some(else_block) = &mut self.else_block {
-            use crate::ast::ElseBlock::{Else, ElseIf};
-            match else_block {
-                ElseIf(if_expr) => if_expr.mark_tail_calls(),
-                Else(block) => block.mark_tail_calls(),
-            }
-        }
-    }
-}
-
-impl MarkTailCalls for BinaryExpr {
-    fn mark_tail_calls(&mut self) {
-        self.lhs.mark_tail_calls();
-        self.rhs.mark_tail_calls();
-    }
-}
-
-impl MarkTailCalls for UnaryExpr {
-    fn mark_tail_calls(&mut self) {
-        self.rhs.mark_tail_calls();
-    }
-}
-
-trait TailCalls {
-    fn get_tail_calls_mut(&mut self) -> Vec<&mut Call>;
-}
-
-impl TailCalls for Expr {
-    fn get_tail_calls_mut(&mut self) -> Vec<&mut Call> {
-        match self {
-            Expr::Block(block) => block.get_tail_calls_mut(),
-            Expr::Call(call) => vec![call],
-            Expr::If(if_expr) => if_expr.get_tail_calls_mut(),
-            _ => vec![],
-        }
-    }
-}
-
-impl TailCalls for Block {
-    fn get_tail_calls_mut(&mut self) -> Vec<&mut Call> {
-        self.return_expr
-            .as_mut()
-            .map(|e| match e.as_mut() {
-                Expr::Call(c) => vec![c],
-                _ => vec![],
-            })
-            .unwrap_or_default()
-    }
-}
-
-impl TailCalls for IfExpr {
-    fn get_tail_calls_mut(&mut self) -> Vec<&mut Call> {
-        let mut then_block = self.then_block.get_tail_calls_mut();
-        let mut else_block = {
-            match &mut self.else_block {
-                Some(else_block) => match else_block {
-                    crate::ast::ElseBlock::ElseIf(if_expr) => if_expr.get_tail_calls_mut(),
-                    crate::ast::ElseBlock::Else(block) => block.get_tail_calls_mut(),
-                },
-                None => vec![],
-            }
-        };
-        then_block.append(&mut else_block);
-        then_block
+fn mark_if_expr(if_expr: &mut Box<IfExpr>, is_final: bool) {
+    mark_expr(&mut if_expr.condition, false);
+    mark_block(&mut if_expr.then_block, is_final);
+    match &mut if_expr.else_block {
+        Some(ElseBlock::ElseIf(if_expr)) => mark_if_expr(if_expr, is_final),
+        Some(ElseBlock::Else(block)) => mark_block(block, is_final),
+        None => {}
     }
 }
