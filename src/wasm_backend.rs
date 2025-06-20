@@ -237,173 +237,189 @@ impl WasmGenState {
     fn gen_expr(&mut self, func: &mut wasm::Func, expr: ast::Expr) {
         // NOTE: all expressions must return some value, even if it is nil.
         match expr {
-            ast::Expr::Block(block) => {
-                for stmt in block.stmts {
-                    self.gen_stmt(func, stmt);
-                }
-
-                if let Some(return_expr) = block.return_expr {
-                    self.gen_expr(func, *return_expr);
-                } else {
-                    self.gen_boxed_nil(func);
-                }
-            }
-            ast::Expr::Call(call) => {
-                // Put arguments onto the stack
-                // Start with self reference
-                self.gen_expr(func, *call.target);
-                let target_idx = func.gen_local_tee(MEM_PTR_TY, None, None);
-                // Then the real args
-                // Save this before call.arguments is consumed in the for loop
-                let num_args = call.arguments.len();
-                for arg in call.arguments {
-                    self.gen_expr(func, arg);
-                }
-
-                // Actually call the function
-                func.gen_local_get(target_idx);
-                func.gen_unbox(wasm::BoxType::Func);
-                func.body.extend(wasm::binary::CALL_INDIRECT);
-                func.body.extend(
-                    self.module
-                        .ty_sec
-                        .insert(wasm::FuncType::new(num_args, MEM_PTR_TY)),
-                );
-                func.body.extend(0x00); // Last arg to CALL_INDIRECT (the index of the table)
-            }
-            ast::Expr::If(if_expr) => {
-                self.gen_expr(func, if_expr.condition);
-                func.gen_unbox(wasm::BoxType::Bool);
-
-                func.body.extend(wasm::binary::IF);
-                // Always return a boxed ptr, even if it's nil
-                func.body.extend(MEM_PTR_TY);
-                self.gen_expr(func, ast::Expr::Block(if_expr.then_block));
-
-                // Generate else block
-                func.body.extend(wasm::binary::ELSE);
-
-                if let Some(else_block) = if_expr.else_block {
-                    match else_block {
-                        ast::ElseBlock::ElseIf(if_expr) => {
-                            self.gen_expr(func, ast::Expr::If(if_expr))
-                        }
-                        ast::ElseBlock::Else(block) => self.gen_expr(func, ast::Expr::Block(block)),
-                    }
-                } else {
-                    self.gen_boxed_nil(func);
-                }
-
-                func.body.extend(wasm::binary::END);
-            }
-            ast::Expr::Binary(binary_expr) => {
-                let (op_ty, ret_ty, instrs) = {
-                    use wasm::binary::{
-                        ADD_F64, AND_I32, DIV_F64, EQ_F64, GE_F64, GT_F64, LE_F64, LT_F64, MUL_F64,
-                        NE_F64, OR_I32, SUB_F64,
-                    };
-                    use wasm::BoxType::{Bool, Num};
-
-                    match binary_expr.op {
-                        ast::BinaryOp::Or => (Bool, Bool, OR_I32),
-                        ast::BinaryOp::And => (Bool, Bool, AND_I32),
-                        ast::BinaryOp::NotEq => (Num, Bool, NE_F64),
-                        ast::BinaryOp::Eq => (Num, Bool, EQ_F64),
-                        ast::BinaryOp::Greater => (Num, Bool, GT_F64),
-                        ast::BinaryOp::GreaterEq => (Num, Bool, GE_F64),
-                        ast::BinaryOp::Less => (Num, Bool, LT_F64),
-                        ast::BinaryOp::LessEq => (Num, Bool, LE_F64),
-                        ast::BinaryOp::Subtract => (Num, Num, SUB_F64),
-                        ast::BinaryOp::Add => (Num, Num, ADD_F64),
-                        ast::BinaryOp::Divide => (Num, Num, DIV_F64),
-                        ast::BinaryOp::Multiply => (Num, Num, MUL_F64),
-                    }
-                };
-
-                self.gen_expr(func, binary_expr.rhs);
-                let rhs_idx = func.gen_local_set(MEM_PTR_TY, None, None);
-
-                self.gen_expr(func, binary_expr.lhs);
-
-                let rebox_ptr = self.mem_store.alloc(func, ret_ty);
-                func.unwrap_box(op_ty, rebox_ptr, |func| {
-                    func.gen_local_get(rhs_idx);
-                    func.gen_unbox(op_ty);
-
-                    func.body.extend(instrs)
-                });
-            }
-            ast::Expr::Unary(unary_expr) => {
-                self.gen_expr(func, unary_expr.rhs);
-                match unary_expr.op {
-                    ast::UnaryOp::Not => {
-                        let rebox_ptr = self.mem_store.alloc(func, wasm::BoxType::Bool);
-                        func.unwrap_box(wasm::BoxType::Bool, rebox_ptr, |func| {
-                            // Use XOR 0x1 as NOT
-                            // 0x0 xor 0x1 = 0x1
-                            // 0x1 xor 0x1 = 0x0
-                            func.body
-                                .extend([wasm::binary::CONST_I32, 0x1, wasm::binary::XOR_I32])
-                        })
-                    }
-                    ast::UnaryOp::Negate => {
-                        let rebox_ptr = self.mem_store.alloc(func, wasm::BoxType::Num);
-                        func.unwrap_box(wasm::BoxType::Num, rebox_ptr, |func| {
-                            func.body.extend(wasm::binary::NEG_F64)
-                        })
-                    }
-                }
-            }
-            ast::Expr::Literal(literal) => match literal {
-                ast::Literal::Bool(b) => {
-                    let ptr = self.mem_store.alloc(func, wasm::BoxType::Bool);
-                    func.gen_box(
-                        ptr,
-                        [|func: &mut wasm::Func| {
-                            func.body.extend(wasm::binary::CONST_I32);
-                            func.body.extend(b);
-                        }],
-                    )
-                }
-                ast::Literal::Number(n) => {
-                    let ptr = self.mem_store.alloc(func, wasm::BoxType::Num);
-                    func.gen_box(
-                        ptr,
-                        [|func: &mut wasm::Func| {
-                            func.body.extend(wasm::binary::CONST_F64);
-                            func.body.extend(n);
-                        }],
-                    )
-                }
-                ast::Literal::Str(s) => {
-                    // Encode as a WasmVec of UTF-8 chars
-                    let mut buf = WasmVec::new();
-                    buf.extend(s.into_bytes());
-                    let buf = buf.into_bytes();
-
-                    let ptr = self
-                        .mem_store
-                        .alloc_n(func, wasm::BoxType::String, buf.len() as u32);
-                    func.gen_box(
-                        ptr,
-                        buf.into_iter().map(|byte| {
-                            // Make sure it gets encoded w/ LEB128 and not as an opcode
-                            let byte = byte as i32;
-                            move |func: &mut wasm::Func| {
-                                func.body.extend(wasm::binary::CONST_I32);
-                                func.body.extend(byte);
-                            }
-                        }),
-                    );
-                }
-                ast::Literal::Nil => self.gen_boxed_nil(func),
-            },
-            ast::Expr::Identifier(identifier) => func.gen_stack_get(
-                &identifier
-                    .location
-                    .unwrap_or_else(|| panic!("location resolved for ident, {}", identifier.name)),
-            ),
+            ast::Expr::Block(block) => self.gen_block_expr(block, func),
+            ast::Expr::Call(call) => self.gen_call_expr(call, func),
+            ast::Expr::If(if_expr) => self.gen_if_expr(*if_expr, func),
+            ast::Expr::Binary(binary_expr) => self.gen_binary_expr(*binary_expr, func),
+            ast::Expr::Unary(unary_expr) => self.gen_unary_expr(*unary_expr, func),
+            ast::Expr::Literal(literal) => self.gen_literal_expr(func, literal),
+            ast::Expr::Identifier(identifier) => self.gen_identifier_expr(identifier, func),
         }
+    }
+
+    fn gen_block_expr(&mut self, block: ast::Block, func: &mut wasm::Func) {
+        for stmt in block.stmts {
+            self.gen_stmt(func, stmt);
+        }
+
+        if let Some(return_expr) = block.return_expr {
+            self.gen_expr(func, *return_expr);
+        } else {
+            self.gen_boxed_nil(func);
+        }
+    }
+
+    fn gen_call_expr(&mut self, call: ast::Call, func: &mut wasm::Func) {
+        // Put arguments onto the stack
+        // Start with self reference
+        self.gen_expr(func, *call.target);
+        let target_idx = func.gen_local_tee(MEM_PTR_TY, None, None);
+        // Then the real args
+        // Save this before call.arguments is consumed in the for loop
+        let num_args = call.arguments.len();
+        for arg in call.arguments {
+            self.gen_expr(func, arg);
+        }
+
+        // Actually call the function
+        func.gen_local_get(target_idx);
+        func.gen_unbox(wasm::BoxType::Func);
+        func.body.extend(wasm::binary::CALL_INDIRECT);
+        func.body.extend(
+            self.module
+                .ty_sec
+                .insert(wasm::FuncType::new(num_args, MEM_PTR_TY)),
+        );
+        func.body.extend(0x00); // Last arg to CALL_INDIRECT (the index of the table)
+    }
+
+    fn gen_if_expr(&mut self, if_expr: ast::IfExpr, func: &mut wasm::Func) {
+        self.gen_expr(func, if_expr.condition);
+        func.gen_unbox(wasm::BoxType::Bool);
+
+        func.body.extend(wasm::binary::IF);
+        // Always return a boxed ptr, even if it's nil
+        func.body.extend(MEM_PTR_TY);
+        self.gen_expr(func, ast::Expr::Block(if_expr.then_block));
+
+        // Generate else block
+        func.body.extend(wasm::binary::ELSE);
+
+        if let Some(else_block) = if_expr.else_block {
+            match else_block {
+                ast::ElseBlock::ElseIf(if_expr) => self.gen_expr(func, ast::Expr::If(if_expr)),
+                ast::ElseBlock::Else(block) => self.gen_expr(func, ast::Expr::Block(block)),
+            }
+        } else {
+            self.gen_boxed_nil(func);
+        }
+
+        func.body.extend(wasm::binary::END);
+    }
+
+    fn gen_binary_expr(&mut self, binary_expr: ast::BinaryExpr, func: &mut wasm::Func) {
+        let (op_ty, ret_ty, instrs) = {
+            use wasm::binary::{
+                ADD_F64, AND_I32, DIV_F64, EQ_F64, GE_F64, GT_F64, LE_F64, LT_F64, MUL_F64, NE_F64,
+                OR_I32, SUB_F64,
+            };
+            use wasm::BoxType::{Bool, Num};
+
+            match binary_expr.op {
+                ast::BinaryOp::Or => (Bool, Bool, OR_I32),
+                ast::BinaryOp::And => (Bool, Bool, AND_I32),
+                ast::BinaryOp::NotEq => (Num, Bool, NE_F64),
+                ast::BinaryOp::Eq => (Num, Bool, EQ_F64),
+                ast::BinaryOp::Greater => (Num, Bool, GT_F64),
+                ast::BinaryOp::GreaterEq => (Num, Bool, GE_F64),
+                ast::BinaryOp::Less => (Num, Bool, LT_F64),
+                ast::BinaryOp::LessEq => (Num, Bool, LE_F64),
+                ast::BinaryOp::Subtract => (Num, Num, SUB_F64),
+                ast::BinaryOp::Add => (Num, Num, ADD_F64),
+                ast::BinaryOp::Divide => (Num, Num, DIV_F64),
+                ast::BinaryOp::Multiply => (Num, Num, MUL_F64),
+            }
+        };
+
+        self.gen_expr(func, binary_expr.rhs);
+        let rhs_idx = func.gen_local_set(MEM_PTR_TY, None, None);
+
+        self.gen_expr(func, binary_expr.lhs);
+
+        let rebox_ptr = self.mem_store.alloc(func, ret_ty);
+        func.unwrap_box(op_ty, rebox_ptr, |func| {
+            func.gen_local_get(rhs_idx);
+            func.gen_unbox(op_ty);
+
+            func.body.extend(instrs)
+        });
+    }
+
+    fn gen_unary_expr(&mut self, unary_expr: ast::UnaryExpr, func: &mut wasm::Func) {
+        self.gen_expr(func, unary_expr.rhs);
+        match unary_expr.op {
+            ast::UnaryOp::Not => {
+                let rebox_ptr = self.mem_store.alloc(func, wasm::BoxType::Bool);
+                func.unwrap_box(wasm::BoxType::Bool, rebox_ptr, |func| {
+                    // Use XOR 0x1 as NOT
+                    // 0x0 xor 0x1 = 0x1
+                    // 0x1 xor 0x1 = 0x0
+                    func.body
+                        .extend([wasm::binary::CONST_I32, 0x1, wasm::binary::XOR_I32])
+                })
+            }
+            ast::UnaryOp::Negate => {
+                let rebox_ptr = self.mem_store.alloc(func, wasm::BoxType::Num);
+                func.unwrap_box(wasm::BoxType::Num, rebox_ptr, |func| {
+                    func.body.extend(wasm::binary::NEG_F64)
+                })
+            }
+        }
+    }
+
+    fn gen_literal_expr(&mut self, func: &mut wasm::Func, literal: ast::Literal) {
+        match literal {
+            ast::Literal::Bool(b) => {
+                let ptr = self.mem_store.alloc(func, wasm::BoxType::Bool);
+                func.gen_box(
+                    ptr,
+                    [|func: &mut wasm::Func| {
+                        func.body.extend(wasm::binary::CONST_I32);
+                        func.body.extend(b);
+                    }],
+                )
+            }
+            ast::Literal::Number(n) => {
+                let ptr = self.mem_store.alloc(func, wasm::BoxType::Num);
+                func.gen_box(
+                    ptr,
+                    [|func: &mut wasm::Func| {
+                        func.body.extend(wasm::binary::CONST_F64);
+                        func.body.extend(n);
+                    }],
+                )
+            }
+            ast::Literal::Str(s) => {
+                // Encode as a WasmVec of UTF-8 chars
+                let mut buf = WasmVec::new();
+                buf.extend(s.into_bytes());
+                let buf = buf.into_bytes();
+
+                let ptr = self
+                    .mem_store
+                    .alloc_n(func, wasm::BoxType::String, buf.len() as u32);
+                func.gen_box(
+                    ptr,
+                    buf.into_iter().map(|byte| {
+                        // Make sure it gets encoded w/ LEB128 and not as an opcode
+                        let byte = byte as i32;
+                        move |func: &mut wasm::Func| {
+                            func.body.extend(wasm::binary::CONST_I32);
+                            func.body.extend(byte);
+                        }
+                    }),
+                );
+            }
+            ast::Literal::Nil => self.gen_boxed_nil(func),
+        }
+    }
+
+    fn gen_identifier_expr(&mut self, identifier: ast::Identifier, func: &mut wasm::Func) {
+        func.gen_stack_get(
+            &identifier
+                .location
+                .unwrap_or_else(|| panic!("location resolved for ident, {}", identifier.name)),
+        )
     }
 
     fn gen_boxed_nil(&mut self, func: &mut wasm::Func) {
