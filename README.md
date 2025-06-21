@@ -1,7 +1,8 @@
 # qua
 
 This is my little toy programming language. It's impure and fully immutable, so
-ends up looking decently functional. It is also very much a work in progress!
+ends up looking decently functional. It can be interperted as well as compiled
+to wasm. It is also very much a work in progress!
 
 It looks a little like this:
 
