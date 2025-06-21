@@ -10,7 +10,7 @@ pub fn mark_tail_calls(program: &mut Program) {
 // Better named than `mark_tail_calls`
 fn mark_functions(stmts: &mut [Stmt]) {
     for stmt in stmts {
-        let Stmt::Let(binding) = stmt else { return };
+        let Stmt::Let(binding) = stmt else { continue };
         mark_binding(binding);
     }
 }
