@@ -14,7 +14,7 @@ let is_even(x) = {
     }
   };
   let x = if x < 0 { -x } else { x };
-  odd(x)
+  !odd(x)
 };
 print(is_even(1234567));
 print(is_even(6543210));
