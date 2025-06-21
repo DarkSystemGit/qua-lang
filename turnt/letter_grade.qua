@@ -1,0 +1,11 @@
+let letter_grade(percent) = {
+  if      percent >= 97 { "A+" }
+  else if percent >= 93 { "A" }
+  else if percent >= 90 { "A- " }
+  else                  { "I'm lazy." }
+};
+let percent(points, total) = points / total * 100;
+
+let grade = percent(42 * 0.97, 42); // 97%
+let grade = letter_grade(grade);
+print(grade); // A+
