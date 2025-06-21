@@ -40,7 +40,10 @@ impl WasmGenState {
         module.table_sec = Some(table_sec);
 
         let mem_idx = module.mem_sec.insert(wasm::MemType {
-            limits: wasm::Limits { min: 64, max: None },
+            limits: wasm::Limits {
+                min: 16_384,
+                max: None,
+            },
         });
 
         let global_mem_alloc_ptr = module.globals_sec.insert(
