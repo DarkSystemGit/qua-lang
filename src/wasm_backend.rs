@@ -274,7 +274,11 @@ impl WasmGenState {
         // Actually call the function
         func.gen_local_get(target_idx);
         func.gen_unbox(wasm::BoxType::Func);
-        func.body.extend(wasm::binary::CALL_INDIRECT);
+        func.body.extend(if call.is_tail_call {
+            wasm::binary::RETURN_CALL_INDIRECT
+        } else {
+            wasm::binary::CALL_INDIRECT
+        });
         func.body.extend(
             self.module
                 .ty_sec
