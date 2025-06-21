@@ -1,0 +1,7 @@
+let add(a, b) = {
+	if b == 0 { a }
+	else      { add(a + 1, b - 1) }
+};
+print(add(3, add(1, 2))); // 6
+print(add(22, add(13, 7))); // 42
+print(add(123456789, 123456789)); // 246,913,578
