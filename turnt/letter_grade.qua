@@ -2,7 +2,7 @@ let letter_grade(percent) = {
   if      percent >= 97 { "A+" }
   else if percent >= 93 { "A" }
   else if percent >= 90 { "A- " }
-  else                  { "I'm lazy." }
+  else                  { "some other grade" }
 };
 let percent(points, total) = points / total * 100;
 
