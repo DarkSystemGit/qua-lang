@@ -1,5 +1,7 @@
 # qua
 
+### fork of https://github.com/gavinmorrow/qua-lang, now with an IR, and eventually a backend for the [atto-24](https://github.com/DarkSystemGit/Atto-24)
+
 This is my little toy programming language. It's impure and fully immutable, so
 ends up looking decently functional. It can be interperted as well as compiled
 to wasm. It is also very much a work in progress!
