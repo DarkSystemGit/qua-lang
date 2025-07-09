@@ -1,0 +1,1205 @@
+[
+    Let(
+        Binding {
+            ident: Identifier {
+                name: "Vector",
+                location: Some(
+                    Stack(
+                        StackIndex(
+                            12,
+                        ),
+                    ),
+                ),
+            },
+            metadata: Func {
+                arguments: [
+                    Identifier {
+                        name: "x",
+                        location: None,
+                    },
+                    Identifier {
+                        name: "y",
+                        location: None,
+                    },
+                ],
+                upvalues: [],
+            },
+            value: Block(
+                Block {
+                    stmts: [
+                        Let(
+                            Binding {
+                                ident: Identifier {
+                                    name: "dispatch",
+                                    location: Some(
+                                        Stack(
+                                            StackIndex(
+                                                3,
+                                            ),
+                                        ),
+                                    ),
+                                },
+                                metadata: Func {
+                                    arguments: [
+                                        Identifier {
+                                            name: "method",
+                                            location: None,
+                                        },
+                                    ],
+                                    upvalues: [
+                                        Upvalue {
+                                            target: Stack(
+                                                StackIndex(
+                                                    1,
+                                                ),
+                                            ),
+                                            dbg_name: "x",
+                                        },
+                                        Upvalue {
+                                            target: Stack(
+                                                StackIndex(
+                                                    2,
+                                                ),
+                                            ),
+                                            dbg_name: "y",
+                                        },
+                                        Upvalue {
+                                            target: Stack(
+                                                StackIndex(
+                                                    0,
+                                                ),
+                                            ),
+                                            dbg_name: "Vector",
+                                        },
+                                        Upvalue {
+                                            target: Stack(
+                                                StackIndex(
+                                                    1,
+                                                ),
+                                            ),
+                                            dbg_name: "x",
+                                        },
+                                        Upvalue {
+                                            target: Stack(
+                                                StackIndex(
+                                                    2,
+                                                ),
+                                            ),
+                                            dbg_name: "y",
+                                        },
+                                    ],
+                                },
+                                value: Block(
+                                    Block {
+                                        stmts: [],
+                                        return_expr: Some(
+                                            If(
+                                                IfExpr {
+                                                    condition: Binary(
+                                                        BinaryExpr {
+                                                            lhs: Identifier(
+                                                                Identifier {
+                                                                    name: "method",
+                                                                    location: Some(
+                                                                        Stack(
+                                                                            StackIndex(
+                                                                                1,
+                                                                            ),
+                                                                        ),
+                                                                    ),
+                                                                },
+                                                            ),
+                                                            op: Eq,
+                                                            rhs: Literal(
+                                                                Str(
+                                                                    "x",
+                                                                ),
+                                                            ),
+                                                            op_pos: Pos(
+                                                                62,
+                                                            ),
+                                                        },
+                                                    ),
+                                                    then_block: Block {
+                                                        stmts: [],
+                                                        return_expr: Some(
+                                                            Identifier(
+                                                                Identifier {
+                                                                    name: "x",
+                                                                    location: Some(
+                                                                        Upvalue(
+                                                                            UpvalueIndex(
+                                                                                0,
+                                                                            ),
+                                                                        ),
+                                                                    ),
+                                                                },
+                                                            ),
+                                                        ),
+                                                    },
+                                                    else_block: Some(
+                                                        ElseIf(
+                                                            IfExpr {
+                                                                condition: Binary(
+                                                                    BinaryExpr {
+                                                                        lhs: Identifier(
+                                                                            Identifier {
+                                                                                name: "method",
+                                                                                location: Some(
+                                                                                    Stack(
+                                                                                        StackIndex(
+                                                                                            1,
+                                                                                        ),
+                                                                                    ),
+                                                                                ),
+                                                                            },
+                                                                        ),
+                                                                        op: Eq,
+                                                                        rhs: Literal(
+                                                                            Str(
+                                                                                "y",
+                                                                            ),
+                                                                        ),
+                                                                        op_pos: Pos(
+                                                                            100,
+                                                                        ),
+                                                                    },
+                                                                ),
+                                                                then_block: Block {
+                                                                    stmts: [],
+                                                                    return_expr: Some(
+                                                                        Identifier(
+                                                                            Identifier {
+                                                                                name: "y",
+                                                                                location: Some(
+                                                                                    Upvalue(
+                                                                                        UpvalueIndex(
+                                                                                            1,
+                                                                                        ),
+                                                                                    ),
+                                                                                ),
+                                                                            },
+                                                                        ),
+                                                                    ),
+                                                                },
+                                                                else_block: Some(
+                                                                    ElseIf(
+                                                                        IfExpr {
+                                                                            condition: Binary(
+                                                                                BinaryExpr {
+                                                                                    lhs: Identifier(
+                                                                                        Identifier {
+                                                                                            name: "method",
+                                                                                            location: Some(
+                                                                                                Stack(
+                                                                                                    StackIndex(
+                                                                                                        1,
+                                                                                                    ),
+                                                                                                ),
+                                                                                            ),
+                                                                                        },
+                                                                                    ),
+                                                                                    op: Eq,
+                                                                                    rhs: Literal(
+                                                                                        Str(
+                                                                                            "add",
+                                                                                        ),
+                                                                                    ),
+                                                                                    op_pos: Pos(
+                                                                                        138,
+                                                                                    ),
+                                                                                },
+                                                                            ),
+                                                                            then_block: Block {
+                                                                                stmts: [
+                                                                                    Let(
+                                                                                        Binding {
+                                                                                            ident: Identifier {
+                                                                                                name: "add",
+                                                                                                location: Some(
+                                                                                                    Stack(
+                                                                                                        StackIndex(
+                                                                                                            2,
+                                                                                                        ),
+                                                                                                    ),
+                                                                                                ),
+                                                                                            },
+                                                                                            metadata: Func {
+                                                                                                arguments: [
+                                                                                                    Identifier {
+                                                                                                        name: "other",
+                                                                                                        location: None,
+                                                                                                    },
+                                                                                                ],
+                                                                                                upvalues: [
+                                                                                                    Upvalue {
+                                                                                                        target: Upvalue(
+                                                                                                            UpvalueIndex(
+                                                                                                                2,
+                                                                                                            ),
+                                                                                                        ),
+                                                                                                        dbg_name: "Vector",
+                                                                                                    },
+                                                                                                    Upvalue {
+                                                                                                        target: Upvalue(
+                                                                                                            UpvalueIndex(
+                                                                                                                3,
+                                                                                                            ),
+                                                                                                        ),
+                                                                                                        dbg_name: "x",
+                                                                                                    },
+                                                                                                    Upvalue {
+                                                                                                        target: Upvalue(
+                                                                                                            UpvalueIndex(
+                                                                                                                4,
+                                                                                                            ),
+                                                                                                        ),
+                                                                                                        dbg_name: "y",
+                                                                                                    },
+                                                                                                ],
+                                                                                            },
+                                                                                            value: Block(
+                                                                                                Block {
+                                                                                                    stmts: [],
+                                                                                                    return_expr: Some(
+                                                                                                        Call(
+                                                                                                            Call {
+                                                                                                                target: Identifier(
+                                                                                                                    Identifier {
+                                                                                                                        name: "Vector",
+                                                                                                                        location: Some(
+                                                                                                                            Upvalue(
+                                                                                                                                UpvalueIndex(
+                                                                                                                                    0,
+                                                                                                                                ),
+                                                                                                                            ),
+                                                                                                                        ),
+                                                                                                                    },
+                                                                                                                ),
+                                                                                                                arguments: [
+                                                                                                                    Binary(
+                                                                                                                        BinaryExpr {
+                                                                                                                            lhs: Identifier(
+                                                                                                                                Identifier {
+                                                                                                                                    name: "x",
+                                                                                                                                    location: Some(
+                                                                                                                                        Upvalue(
+                                                                                                                                            UpvalueIndex(
+                                                                                                                                                1,
+                                                                                                                                            ),
+                                                                                                                                        ),
+                                                                                                                                    ),
+                                                                                                                                },
+                                                                                                                            ),
+                                                                                                                            op: Add,
+                                                                                                                            rhs: Call(
+                                                                                                                                Call {
+                                                                                                                                    target: Identifier(
+                                                                                                                                        Identifier {
+                                                                                                                                            name: "other",
+                                                                                                                                            location: Some(
+                                                                                                                                                Stack(
+                                                                                                                                                    StackIndex(
+                                                                                                                                                        1,
+                                                                                                                                                    ),
+                                                                                                                                                ),
+                                                                                                                                            ),
+                                                                                                                                        },
+                                                                                                                                    ),
+                                                                                                                                    arguments: [
+                                                                                                                                        Literal(
+                                                                                                                                            Str(
+                                                                                                                                                "x",
+                                                                                                                                            ),
+                                                                                                                                        ),
+                                                                                                                                    ],
+                                                                                                                                    is_tail_call: false,
+                                                                                                                                    pos: Pos(
+                                                                                                                                        198,
+                                                                                                                                    ),
+                                                                                                                                },
+                                                                                                                            ),
+                                                                                                                            op_pos: Pos(
+                                                                                                                                191,
+                                                                                                                            ),
+                                                                                                                        },
+                                                                                                                    ),
+                                                                                                                    Binary(
+                                                                                                                        BinaryExpr {
+                                                                                                                            lhs: Identifier(
+                                                                                                                                Identifier {
+                                                                                                                                    name: "y",
+                                                                                                                                    location: Some(
+                                                                                                                                        Upvalue(
+                                                                                                                                            UpvalueIndex(
+                                                                                                                                                2,
+                                                                                                                                            ),
+                                                                                                                                        ),
+                                                                                                                                    ),
+                                                                                                                                },
+                                                                                                                            ),
+                                                                                                                            op: Add,
+                                                                                                                            rhs: Call(
+                                                                                                                                Call {
+                                                                                                                                    target: Identifier(
+                                                                                                                                        Identifier {
+                                                                                                                                            name: "other",
+                                                                                                                                            location: Some(
+                                                                                                                                                Stack(
+                                                                                                                                                    StackIndex(
+                                                                                                                                                        1,
+                                                                                                                                                    ),
+                                                                                                                                                ),
+                                                                                                                                            ),
+                                                                                                                                        },
+                                                                                                                                    ),
+                                                                                                                                    arguments: [
+                                                                                                                                        Literal(
+                                                                                                                                            Str(
+                                                                                                                                                "y",
+                                                                                                                                            ),
+                                                                                                                                        ),
+                                                                                                                                    ],
+                                                                                                                                    is_tail_call: false,
+                                                                                                                                    pos: Pos(
+                                                                                                                                        214,
+                                                                                                                                    ),
+                                                                                                                                },
+                                                                                                                            ),
+                                                                                                                            op_pos: Pos(
+                                                                                                                                207,
+                                                                                                                            ),
+                                                                                                                        },
+                                                                                                                    ),
+                                                                                                                ],
+                                                                                                                is_tail_call: true,
+                                                                                                                pos: Pos(
+                                                                                                                    188,
+                                                                                                                ),
+                                                                                                            },
+                                                                                                        ),
+                                                                                                    ),
+                                                                                                },
+                                                                                            ),
+                                                                                        },
+                                                                                    ),
+                                                                                ],
+                                                                                return_expr: Some(
+                                                                                    Identifier(
+                                                                                        Identifier {
+                                                                                            name: "add",
+                                                                                            location: Some(
+                                                                                                Stack(
+                                                                                                    StackIndex(
+                                                                                                        2,
+                                                                                                    ),
+                                                                                                ),
+                                                                                            ),
+                                                                                        },
+                                                                                    ),
+                                                                                ),
+                                                                            },
+                                                                            else_block: None,
+                                                                        },
+                                                                    ),
+                                                                ),
+                                                            },
+                                                        ),
+                                                    ),
+                                                },
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            },
+                        ),
+                    ],
+                    return_expr: Some(
+                        Identifier(
+                            Identifier {
+                                name: "dispatch",
+                                location: Some(
+                                    Stack(
+                                        StackIndex(
+                                            3,
+                                        ),
+                                    ),
+                                ),
+                            },
+                        ),
+                    ),
+                },
+            ),
+        },
+    ),
+    Let(
+        Binding {
+            ident: Identifier {
+                name: "a",
+                location: Some(
+                    Stack(
+                        StackIndex(
+                            13,
+                        ),
+                    ),
+                ),
+            },
+            metadata: Var,
+            value: Call(
+                Call {
+                    target: Identifier(
+                        Identifier {
+                            name: "Vector",
+                            location: Some(
+                                Stack(
+                                    StackIndex(
+                                        12,
+                                    ),
+                                ),
+                            ),
+                        },
+                    ),
+                    arguments: [
+                        Literal(
+                            Number(
+                                6.0,
+                            ),
+                        ),
+                        Literal(
+                            Number(
+                                8.0,
+                            ),
+                        ),
+                    ],
+                    is_tail_call: false,
+                    pos: Pos(
+                        280,
+                    ),
+                },
+            ),
+        },
+    ),
+    Let(
+        Binding {
+            ident: Identifier {
+                name: "b",
+                location: Some(
+                    Stack(
+                        StackIndex(
+                            14,
+                        ),
+                    ),
+                ),
+            },
+            metadata: Var,
+            value: Call(
+                Call {
+                    target: Identifier(
+                        Identifier {
+                            name: "Vector",
+                            location: Some(
+                                Stack(
+                                    StackIndex(
+                                        12,
+                                    ),
+                                ),
+                            ),
+                        },
+                    ),
+                    arguments: [
+                        Literal(
+                            Number(
+                                22.0,
+                            ),
+                        ),
+                        Literal(
+                            Number(
+                                42.0,
+                            ),
+                        ),
+                    ],
+                    is_tail_call: false,
+                    pos: Pos(
+                        302,
+                    ),
+                },
+            ),
+        },
+    ),
+    Let(
+        Binding {
+            ident: Identifier {
+                name: "a_plus",
+                location: Some(
+                    Stack(
+                        StackIndex(
+                            15,
+                        ),
+                    ),
+                ),
+            },
+            metadata: Var,
+            value: Call(
+                Call {
+                    target: Identifier(
+                        Identifier {
+                            name: "a",
+                            location: Some(
+                                Stack(
+                                    StackIndex(
+                                        13,
+                                    ),
+                                ),
+                            ),
+                        },
+                    ),
+                    arguments: [
+                        Literal(
+                            Str(
+                                "add",
+                            ),
+                        ),
+                    ],
+                    is_tail_call: false,
+                    pos: Pos(
+                        326,
+                    ),
+                },
+            ),
+        },
+    ),
+    Let(
+        Binding {
+            ident: Identifier {
+                name: "c",
+                location: Some(
+                    Stack(
+                        StackIndex(
+                            16,
+                        ),
+                    ),
+                ),
+            },
+            metadata: Var,
+            value: Call(
+                Call {
+                    target: Identifier(
+                        Identifier {
+                            name: "a_plus",
+                            location: Some(
+                                Stack(
+                                    StackIndex(
+                                        15,
+                                    ),
+                                ),
+                            ),
+                        },
+                    ),
+                    arguments: [
+                        Identifier(
+                            Identifier {
+                                name: "b",
+                                location: Some(
+                                    Stack(
+                                        StackIndex(
+                                            14,
+                                        ),
+                                    ),
+                                ),
+                            },
+                        ),
+                    ],
+                    is_tail_call: false,
+                    pos: Pos(
+                        349,
+                    ),
+                },
+            ),
+        },
+    ),
+    Expr(
+        Call(
+            Call {
+                target: Identifier(
+                    Identifier {
+                        name: "print",
+                        location: Some(
+                            Stack(
+                                StackIndex(
+                                    0,
+                                ),
+                            ),
+                        ),
+                    },
+                ),
+                arguments: [
+                    Binary(
+                        BinaryExpr {
+                            lhs: Binary(
+                                BinaryExpr {
+                                    lhs: Binary(
+                                        BinaryExpr {
+                                            lhs: Binary(
+                                                BinaryExpr {
+                                                    lhs: Literal(
+                                                        Str(
+                                                            "(",
+                                                        ),
+                                                    ),
+                                                    op: Add,
+                                                    rhs: Call(
+                                                        Call {
+                                                            target: Identifier(
+                                                                Identifier {
+                                                                    name: "c",
+                                                                    location: Some(
+                                                                        Stack(
+                                                                            StackIndex(
+                                                                                16,
+                                                                            ),
+                                                                        ),
+                                                                    ),
+                                                                },
+                                                            ),
+                                                            arguments: [
+                                                                Literal(
+                                                                    Str(
+                                                                        "x",
+                                                                    ),
+                                                                ),
+                                                            ],
+                                                            is_tail_call: false,
+                                                            pos: Pos(
+                                                                367,
+                                                            ),
+                                                        },
+                                                    ),
+                                                    op_pos: Pos(
+                                                        364,
+                                                    ),
+                                                },
+                                            ),
+                                            op: Add,
+                                            rhs: Literal(
+                                                Str(
+                                                    ", ",
+                                                ),
+                                            ),
+                                            op_pos: Pos(
+                                                373,
+                                            ),
+                                        },
+                                    ),
+                                    op: Add,
+                                    rhs: Call(
+                                        Call {
+                                            target: Identifier(
+                                                Identifier {
+                                                    name: "c",
+                                                    location: Some(
+                                                        Stack(
+                                                            StackIndex(
+                                                                16,
+                                                            ),
+                                                        ),
+                                                    ),
+                                                },
+                                            ),
+                                            arguments: [
+                                                Literal(
+                                                    Str(
+                                                        "y",
+                                                    ),
+                                                ),
+                                            ],
+                                            is_tail_call: false,
+                                            pos: Pos(
+                                                383,
+                                            ),
+                                        },
+                                    ),
+                                    op_pos: Pos(
+                                        380,
+                                    ),
+                                },
+                            ),
+                            op: Add,
+                            rhs: Literal(
+                                Str(
+                                    ")",
+                                ),
+                            ),
+                            op_pos: Pos(
+                                389,
+                            ),
+                        },
+                    ),
+                ],
+                is_tail_call: false,
+                pos: Pos(
+                    359,
+                ),
+            },
+        ),
+    ),
+    Let(
+        Binding {
+            ident: Identifier {
+                name: "num",
+                location: Some(
+                    Stack(
+                        StackIndex(
+                            17,
+                        ),
+                    ),
+                ),
+            },
+            metadata: Func {
+                arguments: [
+                    Identifier {
+                        name: "x",
+                        location: None,
+                    },
+                ],
+                upvalues: [],
+            },
+            value: Block(
+                Block {
+                    stmts: [
+                        Let(
+                            Binding {
+                                ident: Identifier {
+                                    name: "self",
+                                    location: Some(
+                                        Stack(
+                                            StackIndex(
+                                                2,
+                                            ),
+                                        ),
+                                    ),
+                                },
+                                metadata: Func {
+                                    arguments: [
+                                        Identifier {
+                                            name: "method",
+                                            location: None,
+                                        },
+                                    ],
+                                    upvalues: [
+                                        Upvalue {
+                                            target: Stack(
+                                                StackIndex(
+                                                    1,
+                                                ),
+                                            ),
+                                            dbg_name: "x",
+                                        },
+                                        Upvalue {
+                                            target: Stack(
+                                                StackIndex(
+                                                    0,
+                                                ),
+                                            ),
+                                            dbg_name: "num",
+                                        },
+                                        Upvalue {
+                                            target: Stack(
+                                                StackIndex(
+                                                    1,
+                                                ),
+                                            ),
+                                            dbg_name: "x",
+                                        },
+                                    ],
+                                },
+                                value: Block(
+                                    Block {
+                                        stmts: [],
+                                        return_expr: Some(
+                                            If(
+                                                IfExpr {
+                                                    condition: Binary(
+                                                        BinaryExpr {
+                                                            lhs: Identifier(
+                                                                Identifier {
+                                                                    name: "method",
+                                                                    location: Some(
+                                                                        Stack(
+                                                                            StackIndex(
+                                                                                1,
+                                                                            ),
+                                                                        ),
+                                                                    ),
+                                                                },
+                                                            ),
+                                                            op: Eq,
+                                                            rhs: Literal(
+                                                                Str(
+                                                                    "get",
+                                                                ),
+                                                            ),
+                                                            op_pos: Pos(
+                                                                466,
+                                                            ),
+                                                        },
+                                                    ),
+                                                    then_block: Block {
+                                                        stmts: [],
+                                                        return_expr: Some(
+                                                            Identifier(
+                                                                Identifier {
+                                                                    name: "x",
+                                                                    location: Some(
+                                                                        Upvalue(
+                                                                            UpvalueIndex(
+                                                                                0,
+                                                                            ),
+                                                                        ),
+                                                                    ),
+                                                                },
+                                                            ),
+                                                        ),
+                                                    },
+                                                    else_block: Some(
+                                                        ElseIf(
+                                                            IfExpr {
+                                                                condition: Binary(
+                                                                    BinaryExpr {
+                                                                        lhs: Identifier(
+                                                                            Identifier {
+                                                                                name: "method",
+                                                                                location: Some(
+                                                                                    Stack(
+                                                                                        StackIndex(
+                                                                                            1,
+                                                                                        ),
+                                                                                    ),
+                                                                                ),
+                                                                            },
+                                                                        ),
+                                                                        op: Eq,
+                                                                        rhs: Literal(
+                                                                            Str(
+                                                                                "add",
+                                                                            ),
+                                                                        ),
+                                                                        op_pos: Pos(
+                                                                            500,
+                                                                        ),
+                                                                    },
+                                                                ),
+                                                                then_block: Block {
+                                                                    stmts: [
+                                                                        Let(
+                                                                            Binding {
+                                                                                ident: Identifier {
+                                                                                    name: "add",
+                                                                                    location: Some(
+                                                                                        Stack(
+                                                                                            StackIndex(
+                                                                                                2,
+                                                                                            ),
+                                                                                        ),
+                                                                                    ),
+                                                                                },
+                                                                                metadata: Func {
+                                                                                    arguments: [
+                                                                                        Identifier {
+                                                                                            name: "other",
+                                                                                            location: None,
+                                                                                        },
+                                                                                    ],
+                                                                                    upvalues: [
+                                                                                        Upvalue {
+                                                                                            target: Upvalue(
+                                                                                                UpvalueIndex(
+                                                                                                    1,
+                                                                                                ),
+                                                                                            ),
+                                                                                            dbg_name: "num",
+                                                                                        },
+                                                                                        Upvalue {
+                                                                                            target: Upvalue(
+                                                                                                UpvalueIndex(
+                                                                                                    2,
+                                                                                                ),
+                                                                                            ),
+                                                                                            dbg_name: "x",
+                                                                                        },
+                                                                                    ],
+                                                                                },
+                                                                                value: Call(
+                                                                                    Call {
+                                                                                        target: Identifier(
+                                                                                            Identifier {
+                                                                                                name: "num",
+                                                                                                location: Some(
+                                                                                                    Upvalue(
+                                                                                                        UpvalueIndex(
+                                                                                                            0,
+                                                                                                        ),
+                                                                                                    ),
+                                                                                                ),
+                                                                                            },
+                                                                                        ),
+                                                                                        arguments: [
+                                                                                            Binary(
+                                                                                                BinaryExpr {
+                                                                                                    lhs: Identifier(
+                                                                                                        Identifier {
+                                                                                                            name: "x",
+                                                                                                            location: Some(
+                                                                                                                Upvalue(
+                                                                                                                    UpvalueIndex(
+                                                                                                                        1,
+                                                                                                                    ),
+                                                                                                                ),
+                                                                                                            ),
+                                                                                                        },
+                                                                                                    ),
+                                                                                                    op: Add,
+                                                                                                    rhs: Call(
+                                                                                                        Call {
+                                                                                                            target: Identifier(
+                                                                                                                Identifier {
+                                                                                                                    name: "other",
+                                                                                                                    location: Some(
+                                                                                                                        Stack(
+                                                                                                                            StackIndex(
+                                                                                                                                1,
+                                                                                                                            ),
+                                                                                                                        ),
+                                                                                                                    ),
+                                                                                                                },
+                                                                                                            ),
+                                                                                                            arguments: [
+                                                                                                                Literal(
+                                                                                                                    Str(
+                                                                                                                        "get",
+                                                                                                                    ),
+                                                                                                                ),
+                                                                                                            ],
+                                                                                                            is_tail_call: false,
+                                                                                                            pos: Pos(
+                                                                                                                547,
+                                                                                                            ),
+                                                                                                        },
+                                                                                                    ),
+                                                                                                    op_pos: Pos(
+                                                                                                        540,
+                                                                                                    ),
+                                                                                                },
+                                                                                            ),
+                                                                                        ],
+                                                                                        is_tail_call: true,
+                                                                                        pos: Pos(
+                                                                                            537,
+                                                                                        ),
+                                                                                    },
+                                                                                ),
+                                                                            },
+                                                                        ),
+                                                                    ],
+                                                                    return_expr: Some(
+                                                                        Identifier(
+                                                                            Identifier {
+                                                                                name: "add",
+                                                                                location: Some(
+                                                                                    Stack(
+                                                                                        StackIndex(
+                                                                                            2,
+                                                                                        ),
+                                                                                    ),
+                                                                                ),
+                                                                            },
+                                                                        ),
+                                                                    ),
+                                                                },
+                                                                else_block: None,
+                                                            },
+                                                        ),
+                                                    ),
+                                                },
+                                            ),
+                                        ),
+                                    },
+                                ),
+                            },
+                        ),
+                    ],
+                    return_expr: Some(
+                        Identifier(
+                            Identifier {
+                                name: "self",
+                                location: Some(
+                                    Stack(
+                                        StackIndex(
+                                            2,
+                                        ),
+                                    ),
+                                ),
+                            },
+                        ),
+                    ),
+                },
+            ),
+        },
+    ),
+    Let(
+        Binding {
+            ident: Identifier {
+                name: "two",
+                location: Some(
+                    Stack(
+                        StackIndex(
+                            18,
+                        ),
+                    ),
+                ),
+            },
+            metadata: Var,
+            value: Call(
+                Call {
+                    target: Identifier(
+                        Identifier {
+                            name: "num",
+                            location: Some(
+                                Stack(
+                                    StackIndex(
+                                        17,
+                                    ),
+                                ),
+                            ),
+                        },
+                    ),
+                    arguments: [
+                        Literal(
+                            Number(
+                                2.0,
+                            ),
+                        ),
+                    ],
+                    is_tail_call: false,
+                    pos: Pos(
+                        602,
+                    ),
+                },
+            ),
+        },
+    ),
+    Let(
+        Binding {
+            ident: Identifier {
+                name: "four",
+                location: Some(
+                    Stack(
+                        StackIndex(
+                            19,
+                        ),
+                    ),
+                ),
+            },
+            metadata: Var,
+            value: Call(
+                Call {
+                    target: Call(
+                        Call {
+                            target: Identifier(
+                                Identifier {
+                                    name: "two",
+                                    location: Some(
+                                        Stack(
+                                            StackIndex(
+                                                18,
+                                            ),
+                                        ),
+                                    ),
+                                },
+                            ),
+                            arguments: [
+                                Literal(
+                                    Str(
+                                        "add",
+                                    ),
+                                ),
+                            ],
+                            is_tail_call: false,
+                            pos: Pos(
+                                621,
+                            ),
+                        },
+                    ),
+                    arguments: [
+                        Identifier(
+                            Identifier {
+                                name: "two",
+                                location: Some(
+                                    Stack(
+                                        StackIndex(
+                                            18,
+                                        ),
+                                    ),
+                                ),
+                            },
+                        ),
+                    ],
+                    is_tail_call: false,
+                    pos: Pos(
+                        628,
+                    ),
+                },
+            ),
+        },
+    ),
+    Expr(
+        Call(
+            Call {
+                target: Identifier(
+                    Identifier {
+                        name: "print",
+                        location: Some(
+                            Stack(
+                                StackIndex(
+                                    0,
+                                ),
+                            ),
+                        ),
+                    },
+                ),
+                arguments: [
+                    Call(
+                        Call {
+                            target: Identifier(
+                                Identifier {
+                                    name: "four",
+                                    location: Some(
+                                        Stack(
+                                            StackIndex(
+                                                19,
+                                            ),
+                                        ),
+                                    ),
+                                },
+                            ),
+                            arguments: [
+                                Literal(
+                                    Str(
+                                        "get",
+                                    ),
+                                ),
+                            ],
+                            is_tail_call: false,
+                            pos: Pos(
+                                645,
+                            ),
+                        },
+                    ),
+                ],
+                is_tail_call: false,
+                pos: Pos(
+                    640,
+                ),
+            },
+        ),
+    ),
+]

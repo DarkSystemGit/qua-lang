@@ -5,3 +5,7 @@ edition = "2021"
 
 [dependencies]
 leb128 = "0.2.5"
+structx = "0.1"
+
+[package.metadata.inwelling]
+structx = true

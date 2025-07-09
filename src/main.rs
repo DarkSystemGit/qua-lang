@@ -13,6 +13,7 @@ mod parser;
 mod stream;
 mod util;
 mod wasm_backend;
+mod ir;
 
 fn main() {
     let mut args = std::env::args();
@@ -31,6 +32,7 @@ fn main() {
                 Ok(ast) => ast,
                 Err(err) => return eprintln!("Error parsing AST: {err:#?}"),
             };
+            println!("{:#?}", ast);
             let wasm = gen_wasm(ast);
 
             let path = Path::new(&path);
@@ -42,7 +44,7 @@ fn main() {
                 .to_os_string()
                 .into_string()
                 .expect("filename should be valid utf8");
-            let out_file_name = format!("../wasm-runner/{filename}.wasm");
+            let out_file_name = format!("./wasm-runner/{filename}.wasm");
             let out_file_path = Path::new(&out_file_name);
             let mut out_file = match std::fs::File::create(out_file_path) {
                 Ok(f) => f,
