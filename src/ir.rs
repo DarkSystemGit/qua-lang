@@ -14,7 +14,8 @@ struct Block {
 }
 
 struct Func {
-    symbols: Vec<Symbol>,
+    upvalues: Vec<Upvalue>,
+    locals: Vec<Symbol>,
     body: Vec<Block>,
     name: String,
     parameters: Vec<Symbol>,
@@ -22,11 +23,12 @@ struct Func {
     id: u16,
 }
 
+struct Upvalue(Symbol);
+
 struct Symbol {
     dtype: DataType,
     name: String,
     id: u32,
-    upvalue: bool,
 }
 
 struct Command {
