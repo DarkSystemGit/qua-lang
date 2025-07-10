@@ -1,4 +1,4 @@
-use crate::lexer::Pos;
+use crate::{ir::DataTypeRaw, lexer::Pos};
 
 pub type Program = Vec<Stmt>;
 
@@ -13,6 +13,7 @@ pub struct Binding {
     pub ident: Identifier,
     pub metadata: BindingMetadata,
     pub value: Expr,
+    pub data_type: DataTypeRaw
 }
 
 #[derive(Clone, Debug)]
@@ -118,12 +119,14 @@ pub enum Literal {
 pub struct Identifier {
     pub name: String,
     pub location: Option<IdentLocation>,
+    pub datatype: Option<DataTypeRaw>
 }
 impl Identifier {
     pub fn new(name: String) -> Self {
         Self {
             name,
             location: None,
+            datatype: None
         }
     }
 

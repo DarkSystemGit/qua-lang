@@ -33,7 +33,7 @@ fn main() {
                 Err(err) => return eprintln!("Error parsing AST: {err:#?}"),
             };
             println!("{:#?}", ast);
-            let wasm = gen_wasm(ast);
+            /*let wasm = gen_wasm(ast);
 
             let path = Path::new(&path);
             let Some(std::path::Component::Normal(filename)) = path.components().last() else {
@@ -53,7 +53,7 @@ fn main() {
             match out_file.write_all(&wasm) {
                 Ok(()) => eprintln!("Wrote to {out_file_path:#?}"),
                 Err(err) => eprintln!("Error writing to file: {err}"),
-            }
+            }*/
         }
         Some(path) => {
             let source = fs::read_to_string(path).expect("source file is readable");

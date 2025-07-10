@@ -82,6 +82,11 @@ pub fn lex(source: String) -> Vec<Token> {
                     "true" => True,
                     "false" => False,
                     "nil" => Nil,
+                    "i64"=>TypeI64,
+                    "f64"=>TypeF64,
+                    "string"=>TypeStr,
+                    "void"=>TypeVoid,
+                    "bool"=>TypeBool,
                     _ => Identifier(ident),
                 }
             }
@@ -150,6 +155,13 @@ pub enum TokenData {
 
     Error(TokenError),
     Comma,
+    TypeI32,
+    TypeI64,
+    TypeF32,
+    TypeF64,
+    TypeStr,
+    TypeBool,
+    TypeVoid
 }
 
 #[derive(Clone, Debug, PartialEq)]

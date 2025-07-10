@@ -3,7 +3,7 @@ DISCLAIMER: this could be totally wrong, idk. this is mostly just for me when
 
 program        -> statement*
 
-statement      -> "let" binding ";"
+statement      -> "let" | type binding ";"
                 | expression ";"
 
 binding        -> pattern binding_args? "=" expression
@@ -18,7 +18,7 @@ block          -> "{" statement* expression? "}"
 
 if_expr        -> "if" expression block ( "else" (if_expr | block) )?
 
-closure        -> binding_args? "=" expression
+closure        -> type binding_args? "=" expression
 
 logic_or       -> ( logic_or "or" )? logic_and
 logic_and      -> ( logic_and "and" )? equality
@@ -30,6 +30,11 @@ unary          -> ( "!" | "-" )? unary | call
 
 call           -> primary call_arguments?
 call_arguments -> "(" ( expression "," )* expression? ")"
+
+type -> 
+    | "i64"
+    | "f32"
+    | "bool"   
 
 primary        -> "true"
                 | "false"

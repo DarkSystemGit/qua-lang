@@ -7,8 +7,9 @@ use tce::mark_tail_calls;
 use crate::{
     ast::{
         BinaryExpr, BinaryOp, Binding, BindingMetadata, Block, Call, ElseBlock, Expr, Identifier,
-        IfExpr, Program, Stmt, UnaryExpr, UnaryOp,
+        IfExpr, Literal, Program, Stmt, UnaryExpr, UnaryOp,
     },
+    ir::DataTypeRaw,
     lexer::{Pos, Token, TokenData},
     stream::Stream,
 };
@@ -57,8 +58,18 @@ impl Parser {
 
     // This is done weirdly to allow for blocks to end in an expr easily
     fn parse_stmt_or_expr(&mut self, env: &mut Env) -> Parse<StmtOrExpr> {
-        if self.matches(&TokenData::Let) {
-            let binding = self.parse_binding(env)?;
+        let m = self.multi_matches(Vec::from([
+            &TokenData::Let,
+            &TokenData::TypeBool,
+            &TokenData::TypeF32,
+            &TokenData::TypeF64,
+            &TokenData::TypeI32,
+            &TokenData::TypeI64,
+            &TokenData::TypeVoid,
+            &TokenData::TypeStr,
+        ]));
+        if m != Option::None {
+            let binding = self.parse_binding(m, env)?;
             self.expect(TokenData::Semicolon)?;
             Ok(StmtOrExpr::Stmt(Stmt::Let(binding)))
         } else {
@@ -70,32 +81,61 @@ impl Parser {
             }
         }
     }
-
-    fn parse_binding(&mut self, env: &mut Env) -> Parse<Binding> {
-        let ident = self.parse_identifier(env)?;
-
-        let is_func = self.matches(&TokenData::OpenParen);
-
-        if is_func {
-            self.parse_func_binding(env, ident)
-        } else {
-            self.expect(TokenData::Equals)?;
-
-            // Insert the var *after* parsing value so that shadowing works
-            let name = ident.name.clone();
-            let value = self.parse_expr(env)?;
-
-            // Declare and resolve var
-            env.declare_local(name.clone());
-            let loc = env.resolve(&name).expect("just declared ident in env");
-            let ident = ident.resolve(loc);
-
-            Ok(Binding {
-                ident,
-                metadata: BindingMetadata::Var,
-                value,
-            })
+    fn convert_tk_to_type(&mut self, m: Option<&TokenData>) -> DataTypeRaw {
+        match m {
+            Some(&TokenData::TypeBool) => DataTypeRaw::Bool,
+            Some(&TokenData::TypeI32) => DataTypeRaw::Int32,
+            Some(&TokenData::TypeI64) => DataTypeRaw::Int64,
+            Some(&TokenData::TypeF32) => DataTypeRaw::Float32,
+            Some(&TokenData::TypeF64) => DataTypeRaw::Float64,
+            Some(&TokenData::TypeStr) => DataTypeRaw::String,
+            Some(&TokenData::TypeVoid) => DataTypeRaw::Void,
+            _ => DataTypeRaw::Any,
         }
+    }
+    fn parse_binding(&mut self, dtype: Option<&TokenData>, env: &mut Env) -> Parse<Binding> {
+        let ident = self.parse_identifier(env)?;
+        let is_func = self.matches(&TokenData::OpenParen);
+        let mut bindingtype: DataTypeRaw = (self.convert_tk_to_type(dtype));
+        let mut rvalue: Parse<Binding> = Err(Error {
+            pos: None,
+            kind: ErrorKind::Internal,
+        });
+        if is_func {
+            if dtype == Some(&TokenData::Let) 
+            {
+                eprintln!("No return type specified for function {}", ident.name);
+            }else{
+                rvalue = self.parse_func_binding(bindingtype, env, ident);
+            }
+        }else{
+                self.expect(TokenData::Equals)?;
+
+                // Insert the var *after* parsing value so that shadowing works
+                let name = ident.name.clone();
+                let value = self.parse_expr(env)?;
+                if dtype == Some(&TokenData::Let) {
+                    match &value {
+                        Expr::Literal(Literal::Bool(bool)) => bindingtype = DataTypeRaw::Bool,
+                        Expr::Literal(Literal::Number(f64)) => bindingtype = DataTypeRaw::Float64,
+                        Expr::Literal(Literal::Str(String)) => bindingtype = DataTypeRaw::String,
+                        _ => {
+                            eprintln!("Can't infer type for variable {}, please declare it",ident.name)
+                        }
+                    }
+                }
+                // Declare and resolve var
+                env.declare_local(name.clone());
+                let loc = env.resolve(&name).expect("just declared ident in env");
+                let ident = ident.resolve(loc);
+                rvalue = Ok(Binding {
+                    ident,
+                    metadata: BindingMetadata::Var,
+                    value,
+                    data_type: bindingtype,
+                });
+        };
+        return rvalue;
     }
 
     fn parse_anon_closure(&mut self, env: &mut Env) -> Parse<Expr> {
@@ -103,8 +143,18 @@ impl Parser {
 
         // TODO: better name, maybe based on pos?
         let mut func_indent = Identifier::new("self".to_string());
-
-        let func = self.parse_func_binding(&mut env, func_indent.clone())?;
+        let m = self.multi_matches(Vec::from([
+            &TokenData::Let,
+            &TokenData::TypeBool,
+            &TokenData::TypeF32,
+            &TokenData::TypeF64,
+            &TokenData::TypeI32,
+            &TokenData::TypeI64,
+            &TokenData::TypeVoid,
+            &TokenData::TypeStr,
+        ]));
+        let dt = self.convert_tk_to_type(m);
+        let func = self.parse_func_binding(dt, &mut env, func_indent.clone())?;
         let func = Stmt::Let(func);
 
         func_indent.location = Some(env.resolve(&func_indent.name).unwrap());
@@ -116,7 +166,12 @@ impl Parser {
         }))
     }
 
-    fn parse_func_binding(&mut self, env: &mut Env, ident: Identifier) -> Parse<Binding> {
+    fn parse_func_binding(
+        &mut self,
+        dtype: DataTypeRaw,
+        env: &mut Env,
+        ident: Identifier,
+    ) -> Parse<Binding> {
         let name = ident.name.clone();
         env.declare_local(name.clone());
         let ident = ident.resolve(env.resolve(&name).expect("just declared ident"));
@@ -124,7 +179,19 @@ impl Parser {
 
         let arguments = self.parse_arguments(
             |parser, env| -> Parse<Identifier> {
-                let ident = parser.parse_identifier(env)?;
+                let dt = parser.multi_matches(Vec::from([
+                    &TokenData::Let,
+                    &TokenData::TypeBool,
+                    &TokenData::TypeF32,
+                    &TokenData::TypeF64,
+                    &TokenData::TypeI32,
+                    &TokenData::TypeI64,
+                    &TokenData::TypeVoid,
+                    &TokenData::TypeStr,
+                ]));
+                let ast_data_type = parser.convert_tk_to_type(dt);
+                let mut ident = parser.parse_identifier(env)?;
+                ident.datatype = Some(ast_data_type);
                 env.declare_local(ident.name.clone());
                 Ok(ident)
             },
@@ -137,6 +204,7 @@ impl Parser {
         let upvalues = env.upvalues();
 
         Ok(Binding {
+            data_type: dtype,
             ident,
             metadata: BindingMetadata::Func {
                 arguments,
@@ -385,7 +453,14 @@ impl Parser {
     fn matches(&mut self, expected_type: &TokenData) -> bool {
         self.tokens.advance_if(|t| &t.data == expected_type)
     }
-
+    fn multi_matches<'a>(&mut self, expected_types: Vec<&'a TokenData>) -> Option<&'a TokenData> {
+        for tp in expected_types {
+            if self.matches(tp) {
+                return Some(tp);
+            }
+        }
+        return Option::None;
+    }
     fn consume_map<U>(&mut self, f: impl FnOnce(&Token) -> Option<U>, err: ErrorKind) -> Parse<U> {
         self.tokens.next_if_map(f).ok_or_else(|| Error {
             pos: self.tokens.peek().map(|t| t.pos),
@@ -430,4 +505,5 @@ pub enum ErrorKind {
     ExpectedUnary,
     ExpectedStmt,
     VarNotInScope { identifier: Identifier },
+    Internal,
 }
