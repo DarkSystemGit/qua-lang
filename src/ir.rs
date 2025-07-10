@@ -1,36 +1,41 @@
-use crate::ast;
-use structx::*;
-struct Module{
+#![expect(dead_code, reason = "prototyping")]
+
+struct Module {
     globals: Vec<Symbol>,
     functions: Vec<Func>,
-    exports:Vec<Symbol>,
-    imports:Vec<Symbol>,
+    exports: Vec<Symbol>,
+    imports: Vec<Symbol>,
     id: u16,
 }
-struct Block{
+
+struct Block {
     contents: Vec<Command>,
     id: u16,
 }
-struct Func{
+
+struct Func {
     symbols: Vec<Symbol>,
     body: Vec<Block>,
     name: String,
     parameters: Vec<Symbol>,
-    return_type:DataType,
+    return_type: DataType,
     id: u16,
 }
-struct Symbol{
-    dtype: DataType, 
+
+struct Symbol {
+    dtype: DataType,
     name: String,
     id: u32,
-    upvalue: bool
+    upvalue: bool,
 }
-struct Command{
+
+struct Command {
     op: Commands,
     data_type: DataType,
-    inline_params: Vec<f64>
+    inline_params: Vec<f64>,
 }
-enum Commands{
+
+enum Commands {
     Add,
     Sub,
     Mul,
@@ -44,14 +49,16 @@ enum Commands{
     Mod,
     Pop,
 }
-enum DataTypeRaw{
+
+enum DataTypeRaw {
     Int32,
     Int64,
     Float32,
     Float64,
-    Bool
+    Bool,
 }
-struct DataType{
+
+struct DataType {
     raw: DataTypeRaw,
     isptr: bool,
     constid: u16,
