@@ -8,11 +8,6 @@ struct Module {
     id: u16,
 }
 
-struct Block {
-    contents: Vec<Command>,
-    id: u16,
-}
-
 struct Func {
     upvalues: Vec<Upvalue>,
     locals: Vec<Symbol>,
@@ -29,6 +24,11 @@ struct Symbol {
     dtype: DataType,
     name: String,
     id: u32,
+}
+
+struct Block {
+    contents: Vec<Command>,
+    id: u16,
 }
 
 struct Command {
@@ -53,9 +53,9 @@ enum Commands {
 }
 
 enum DataTypeRaw {
-    Int32,
-    Int64,
-    Float32,
+    // Int32,
+    // Int64,
+    // Float32,
     Float64,
     Bool,
 }
