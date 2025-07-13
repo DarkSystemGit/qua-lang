@@ -51,7 +51,7 @@ impl CodeGen {
     fn gen_binding(&mut self, func: &mut Func, binding: ast::Binding) -> Option<GenErr> {
         match binding.metadata {
             BindingMetadata::Var => {
-                let slot = func.addVar(&binding);
+                let slot = func.addLocal(&binding);
                 self.gen_expr(func, binding.value);
                 func.addCommand(CommandOps::Store, None, Some(vec![slot as f64]));
             }
@@ -78,14 +78,14 @@ impl CodeGen {
     }
     fn gen_block_expr(&mut self, func: &mut Func, expr: ast::Block) -> Option<GenErr> {
         func.scope.id.push(func.scope.nid);
-        func.scope.nid+=1;
+        func.scope.nid += 1;
         for stmt in expr.stmts {
             self.gen_stmt(func, stmt);
         }
         if expr.return_expr.is_some() {
             self.gen_expr(func, *(expr.return_expr.unwrap()));
         };
-        func.scope.nid-=1;
+        func.scope.nid -= 1;
         func.scope.id.pop();
         None
     }
@@ -113,10 +113,10 @@ impl CodeGen {
         self.gen_expr(func, expr.rhs);
         match expr.op {
             ast::UnaryOp::Negate => {
-                let inline_params = vec![func.addConstant(Value::int64(-1))];
+                let inline_params = vec![func.addConstant(Value::float64(-1.0))];
                 func.addCommand(
                     CommandOps::Const,
-                    Some(DataType::new(DataTypeRaw::Int64, false)),
+                    Some(DataType::new(DataTypeRaw::Float64, false)),
                     Some(inline_params),
                 );
                 func.addCommand(
@@ -160,21 +160,12 @@ impl CodeGen {
                 );
             }
             ast::Literal::Number(n) => {
-                if (n.fract() == 0.0) {
-                    let inline_params = vec![func.addConstant(Value::int64(n as i64))];
-                    func.addCommand(
-                        CommandOps::Const,
-                        Some(DataType::new(DataTypeRaw::Int64, false)),
-                        Some(inline_params),
-                    );
-                } else {
-                    let inline_params = vec![func.addConstant(Value::float64(n))];
-                    func.addCommand(
-                        CommandOps::Const,
-                        Some(DataType::new(DataTypeRaw::Float64, false)),
-                        Some(inline_params),
-                    );
-                }
+                let inline_params = vec![func.addConstant(Value::float64(n))];
+                func.addCommand(
+                    CommandOps::Const,
+                    Some(DataType::new(DataTypeRaw::Float64, false)),
+                    Some(inline_params),
+                );
             }
             ast::Literal::Str(s) => {
                 let inline_params = vec![func.addConstant(Value::string(s))];
@@ -336,11 +327,15 @@ impl Module {
             name: name.clone(),
             parameters: args,
             return_type: return_type,
-            symbols: Vec::new(),
+            locals: Vec::new(),
             blocks: Vec::new(),
             constants: Vec::new(),
             lastcmd: Vec::new(),
-            scope: Scope{id:Vec::new(),nid:0}
+            scope: Scope {
+                id: Vec::new(),
+                nid: 0,
+            },
+            upvalues: Vec::new(),
         };
         let id = func.id;
         func.blocks.push(Block {
@@ -380,7 +375,8 @@ impl Module {
     }
 }
 struct Func {
-    symbols: Vec<Symbol>,
+    locals: Vec<Symbol>,
+    upvalues: Vec<Upvalue>,
     blocks: Vec<Block>,
     name: String,
     parameters: Vec<Symbol>,
@@ -438,37 +434,39 @@ impl Func {
         });
         return id as f64;
     }
-    fn addVar(&mut self, var: &Binding) -> usize {
-        self.symbols.push(Symbol {
+    fn addLocal(&mut self, var: &Binding) -> usize {
+        self.locals.push(Symbol {
             dtype: DataType::new(var.data_type, false),
             name: Some(var.ident.name.clone()),
-            id: self.symbols.len() as u32,
+            id: self.locals.len() as u32,
             upvalue: false,
             value: None,
             scope: Some(self.scope.clone()),
         });
-        return self.symbols.len() - 1;
+        return self.locals.len() - 1;
     }
-    fn getVar(&mut self, var: String)-> &Symbol{
-        let mut candidates: Vec<&Symbol>=Vec::new();
-        let mut rankings: Vec<[u32; 2]>=Vec::new();
-        for sym in &self.symbols{
-            if sym.name==Some(var.clone()){
+    fn getVar(&mut self, var: String) -> &Symbol {
+        let mut candidates: Vec<&Symbol> = Vec::new();
+        let mut rankings: Vec<[u32; 2]> = Vec::new();
+        for sym in &self.locals {
+            if sym.name == Some(var.clone()) {
                 candidates.push(&sym);
             }
         }
-        for symidx in 0..candidates.len(){
-            let mut idx=0;
-            let mut score=0;
-            let sym =candidates[symidx];
-            for i in (sym.scope.as_ref().unwrap().id.iter()){
-                if *i==self.scope.id[idx]{score+=1}
-                idx+=1;
+        for symidx in 0..candidates.len() {
+            let mut idx = 0;
+            let mut score = 0;
+            let sym = candidates[symidx];
+            for i in (sym.scope.as_ref().unwrap().id.iter()) {
+                if *i == self.scope.id[idx] {
+                    score += 1
+                }
+                idx += 1;
             }
-            rankings.push([symidx as u32,score]);
+            rankings.push([symidx as u32, score]);
         }
-        rankings.sort_by(|a, b|b[1].cmp(&a[1]));
-        return &self.symbols[rankings[0][0] as usize];
+        rankings.sort_by(|a, b| b[1].cmp(&a[1]));
+        return &self.locals[rankings[0][0] as usize];
     }
 }
 struct Block {
@@ -484,6 +482,7 @@ struct Symbol {
     value: Option<Value>,
     scope: Option<Scope>,
 }
+struct Upvalue(Symbol);
 #[derive(Clone)]
 enum Value {
     int64(i64),
@@ -568,7 +567,7 @@ impl DataType {
     }
 }
 #[derive(Clone)]
-struct Scope{
-    id:Vec<u32>,
-    nid:u32,
+struct Scope {
+    id: Vec<u32>,
+    nid: u32,
 }
